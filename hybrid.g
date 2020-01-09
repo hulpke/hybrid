@@ -1535,6 +1535,10 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
   if irr[1]<>GeneratorsOfGroup(a) then Error("gens");fi;
   irr:=ShallowCopy(irr[2]);
   SortBy(irr,x->x.dimension);
+  b:=ValueOption("dims");
+  if b<>fail then
+    irr:=Filtered(irr,x->x.dimension in b);
+  fi;
   newq:=[];
   ext:=[];
 #oldcoh:=fail;
