@@ -1231,7 +1231,7 @@ local fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens;
 end;
 
 ExtendQuotientFpToFaithfulElab:=function(fp,quot,module)
-local g,p,m,e,i,j,new,str,rels,z,dim,gens,hom,r,
+local g,p,m,e,i,j,new,str,rels,z,dim,gens,hom,r,newker,cnt,
       it,trysy,prime,mindeg,fps,ei,mgens,mwrd,nn,newfree,mfpi,mmats,sub,
       tab,tab0,evalprod,gensmrep,invsmrep,zerob,step;
 
@@ -1254,12 +1254,15 @@ local g,p,m,e,i,j,new,str,rels,z,dim,gens,hom,r,
 
       rels:=Union(List(OrbitsMovedPoints(p),
         x->List(AllBlocks(Action(p,x)),z->x{z})));
-      new:=List(rels,x->-Length(Orbit(p,x,OnSets)));
+      new:=List(rels,x->Length(Orbit(p,x,OnSets)));
       SortParallel(new,rels);
-      i:=1;
       e:=true;
-      while i<=Length(rels) do
-        new:=Stabilizer(p,rels[i],OnSets);
+      while Length(rels)>0 do
+        new:=Stabilizer(p,rels[1],OnSets);
+        Info(InfoExtReps,2,"Attempt index ",Index(p,new));
+        # ignore any stabilized sets
+        rels:=Filtered(rels,
+          x->not ForAll(GeneratorsOfGroup(new),y->OnSets(x,y)=x));
         if AbelianInvariants(new)<>AbelianInvariants(PreImage(quot,new)) then
           new:=LargerQuotientBySubgroupAbelianization(quot,new);
           if NrMovedPoints(Image(DefiningQuotientHomomorphism(new)))
@@ -1273,19 +1276,25 @@ local g,p,m,e,i,j,new,str,rels,z,dim,gens,hom,r,
             Info(InfoExtReps,2,"Blocks found degree ",NrMovedPoints(p),
                  " ",Size(p));
             mindeg:=Minimum(List(OrbitsMovedPoints(p),Length))/4;
-            i:=Length(rels);
+            rels:=[];
             e:=Size(p)=Size(fp); # can we stop?
           fi;
         fi;
-        i:=i+1;
       od;
     until e;
 
   fi;
+  newker:=KernelOfMultiplicativeGeneralMapping(quot);
+  cnt:=0;
   while Size(p)<Size(fp) do
+    if Length(GeneratorsOfGroup(p))>5 then
+      e:=Size(p);
+      p:=Group(SmallGeneratingSet(p));
+      SetSize(p,e);
+    fi;
     # we allow do go immediately to normal subgroup of index up to 4.
     # This reduces search space
-    it:=DescSubgroupIterator(p:skip:=LogInt(Size(p),2));
+    it:=DescSubgroupIterator(p:skip:=LogInt(Size(fp),2));
     repeat
       m:=NextIterator(it);
       e:=fail;
@@ -1498,18 +1507,31 @@ and false # disable as not all data there yet
       else Info(InfoExtReps,4,"Don't index ",Index(p,m));
       fi;
 
-    until e<>fail;
+      if e<>fail then
+        # store new result, but do not immediately give up on existing
+        # quotient
+
+        i :=IndexInWholeGroup(newker);
+        newker:=Core(fp,Intersection(newker,e));
+        if IndexInWholeGroup(newker)>i then
+          Info(InfoExtReps,1,"index ",Index(p,m)," increases factor by ",
+                IndexInWholeGroup(newker)/Size(p));
+        fi;
+        cnt:=cnt+1;
+      fi;
+
+    until e<>fail 
+      and (IndexInWholeGroup(newker)=Size(fp) or prime^cnt*Size(p)>Size(fp));
+
     i:=p;
 
-    quot:=DefiningQuotientHomomorphism(Intersection(e,
-      KernelOfMultiplicativeGeneralMapping(quot)));
+    quot:=DefiningQuotientHomomorphism(newker);
     p:=Image(quot);
-    Info(InfoExtReps,1,"index ",Index(i,m)," increases factor by ",
-          Size(p)/Size(i)," at degree ",NrMovedPoints(p));
+    Info(InfoExtReps,1,"Redo quotient to ",NrMovedPoints(p));
+    mindeg:=Maximum(mindeg,Index(i,m)-1);
     hom:=false; # we don't have hom cheaply any longer as group changed.
     # this is not an issue if module is irreducible
   od;
-  quot:=quot;
   if IndexInWholeGroup(fp)=1 then
     new:=quot;
   else
