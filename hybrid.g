@@ -1286,7 +1286,7 @@ local g,p,m,e,i,j,new,str,rels,z,dim,gens,hom,r,newker,cnt,
   fi;
   newker:=KernelOfMultiplicativeGeneralMapping(quot);
   cnt:=0;
-  while Size(p)<Size(fp) do
+  while IndexInWholeGroup(newker)<Size(fp) do
     if Length(GeneratorsOfGroup(p))>5 then
       e:=Size(p);
       p:=Group(SmallGeneratingSet(p));
@@ -1526,6 +1526,7 @@ and false # disable as not all data there yet
     i:=p;
 
     quot:=DefiningQuotientHomomorphism(newker);
+    newker:=KernelOfMultiplicativeGeneralMapping(quot);
     p:=Image(quot);
     Info(InfoExtReps,1,"Redo quotient to ",NrMovedPoints(p));
     mindeg:=Maximum(mindeg,Index(i,m)-1);
