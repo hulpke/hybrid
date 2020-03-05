@@ -1,3 +1,24 @@
+# Code, accompanying the paper "Constructing Universal Covers of Finite
+# Groups" by H. Dietrich and A. Hulpke, Hybrid group version
+# (C) 2020 by the authors.
+# This code requires GAP 4.11 or newer
+
+# User functions:
+#
+# WreathModuleCopverHybrid(H,module) constructs
+# \hat H_{V,e} (where $e$ is given through H
+# G should be a permutation group, module a (MeatAxe) module with generators
+# corresponding to those of H
+#
+# LiftQuotientHybrid(hom,p) takes a homomorphism hom from an fp group to a
+# permutation group, and a prime p and returns a homomorphism cov from the
+# same finitely presented group to a suitable group such that
+# - ker cov<=ker hom
+# - ker hom/ker cov is the largest semisimple module quotient of ker hom
+# in characteristic p.
+# A list of irreducible modules to consider can be fed through the
+# option `irr'.
+
 DeclareCategory( "IsHybridGroupElement",
     IsMultiplicativeElementWithInverse and IsAssociativeElement 
     and CanEasilySortElements );
@@ -307,47 +328,6 @@ IsBijective(aut);
 
   fam!.tails:=tails;
 
-  gens:=Group(gens);
-  #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
-
-  return gens;
-
-end;
-
-SemidirectHybrid:=function(r,ker,auts)
-local ogens,n,fam,type,gens,i;
-
-  ogens:=GeneratorsOfGroup(r.presentation.group);
-
-  n:=Length(ogens);
-
-  fam:=NewFamily("Hybrid elements family",IsHybridGroupElement);
-  fam!.presentation:=r.presentation;
-  fam!.factgrp:=r.group;
-  fam!.monhom:=r.monhom;
-  fam!.tzrules:=TranslatedMonoidRules(fam!.monhom);
-  fam!.fphom:=r.fphom;
-  fam!.auts:=auts;
-  fam!.autsinv:=List(auts,Inverse);
-  fam!.factorone:=One(r.presentation.group);
-  fam!.normalone:=One(ker);
-  fam!.normal:=ker;
-  type:=NewType(fam,IsHybridGroupElementDefaultRep);
-  fam!.defaultType:=type;
-  SetOne(fam,HybridGroupElement(fam,fam!.factorone,fam!.normalone));
-  gens:=[];
-  for i in GeneratorsOfGroup(r.presentation.group) do
-    Add(gens,HybridGroupElement(fam,i,fam!.normalone));
-  od;
-  for i in GeneratorsOfGroup(ker) do
-    Add(gens,HybridGroupElement(fam,fam!.factorone,i));
-  od;
-
-  # empty tails from cocycle
-
-  fam!.tails:=ListWithIdenticalEntries(Length(r.presentation.relators),
-    One(ker));
-  ShadowHybrid(fam);
   gens:=Group(gens);
   #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
 
@@ -733,6 +713,47 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
 #    od;
 #  od;
 
+
+end;
+
+SemidirectHybrid:=function(r,ker,auts)
+local ogens,n,fam,type,gens,i;
+
+  ogens:=GeneratorsOfGroup(r.presentation.group);
+
+  n:=Length(ogens);
+
+  fam:=NewFamily("Hybrid elements family",IsHybridGroupElement);
+  fam!.presentation:=r.presentation;
+  fam!.factgrp:=r.group;
+  fam!.monhom:=r.monhom;
+  fam!.tzrules:=TranslatedMonoidRules(fam!.monhom);
+  fam!.fphom:=r.fphom;
+  fam!.auts:=auts;
+  fam!.autsinv:=List(auts,Inverse);
+  fam!.factorone:=One(r.presentation.group);
+  fam!.normalone:=One(ker);
+  fam!.normal:=ker;
+  type:=NewType(fam,IsHybridGroupElementDefaultRep);
+  fam!.defaultType:=type;
+  SetOne(fam,HybridGroupElement(fam,fam!.factorone,fam!.normalone));
+  gens:=[];
+  for i in GeneratorsOfGroup(r.presentation.group) do
+    Add(gens,HybridGroupElement(fam,i,fam!.normalone));
+  od;
+  for i in GeneratorsOfGroup(ker) do
+    Add(gens,HybridGroupElement(fam,fam!.factorone,i));
+  od;
+
+  # empty tails from cocycle
+
+  fam!.tails:=ListWithIdenticalEntries(Length(r.presentation.relators),
+    One(ker));
+  ShadowHybrid(fam);
+  gens:=Group(gens);
+  #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
+
+  return gens;
 
 end;
 
@@ -1629,6 +1650,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
   fp:=FpGroupHybrid(cov);
   SetSize(fp,Size(cov));
   Print("Formed fp cover\n");
+
 
   # now get permrep
   b:=FamilyObj(fp)!.wholeGroup;

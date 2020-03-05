@@ -1,5 +1,5 @@
 # Code, accompanying the paper "Constructing Universal Covers of Finite
-# Groups" by H. dietrich and A. Hulpke, 
+# Groups" by H. Dietrich and A. Hulpke, Older permutation group version
 # (C) 2019 by the authors.
 # This code requires GAP 4.11 or newer
 
