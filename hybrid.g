@@ -1243,8 +1243,20 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre;
     if Size(Group(List(ker,x->x[2])))<Size(hb[2]) then
       Error("need conjugates, not yet done");
     fi;
-    pchom:=GroupGeneralMappingByImagesNC(hb[2],Range(hom),List(ker,x->x[2]),
-      List(ker,x->x[3]));
+    a:=[[],[]];
+    for r in ker do
+      pre:=Position(a[1],r[2]);
+      if pre=fail then
+        Add(a[1],r[2]);
+        Add(a[2],r[3]);
+      else
+        if Length(a[2][pre])>Length(r[3]) then
+          a[2][pre]:=r[3];
+        fi;
+      fi;
+    od;
+
+    pchom:=GroupGeneralMappingByImagesNC(hb[2],Range(hom),a[1],a[2]);
     pre:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
       ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
     #topho:=GroupGeneralMappingByImagesNC(Group(pre),Range(hom),pre,mgi[2]);
@@ -1254,6 +1266,7 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre;
     #hom!.topdec:=topdec;
     #hom!.toppi:=[toppers,topi];
     hom!.underlyingpchom:=pchom;
+#if ForAny(ker,x->ImagesRepresentative(pchom,x[2])<>x[3]) then Error("UUU"); fi;
   else
     pchom:=hom!.underlyingpchom;
     topho:=hom!.topho;
@@ -1275,10 +1288,10 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre;
   a:=MappedWord(r,GeneratorsOfGroup(Source(topho)),mgi[2])
       *ImagesRepresentative(pchom,a![2]);
 
-  #hb:=EpimorphismFromFreeGroup(Source(hom));
-  #ker:=MappedWord(Factorization(Source(hom),elm),GeneratorsOfGroup(Source(hb)),
-  #  MappingGeneratorsImages(hom)[2]);
-  #if ker<>a then Error("image");fi;
+#  hb:=EpimorphismFromFreeGroup(Source(hom));
+#  ker:=MappedWord(Factorization(Source(hom),elm),GeneratorsOfGroup(Source(hb)),
+#    MappingGeneratorsImages(hom)[2]);
+#  if ker<>a then Error("image");fi;
 
   return a;
 end);
@@ -1318,8 +1331,9 @@ function(g,str)
   return IsomorphismFpGroupByChiefSeriesFactor(g,str,TrivialSubgroup(g));
 end);
 
+# convert (full family) hybrid to fp
 FpGroupHybrid:=function(h)
-local fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
+local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k;
 
   fam:=FamilyObj(One(h));
@@ -1468,6 +1482,7 @@ local fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
       *MappedWord(ImagesRepresentative(iso,i![2]),GeneratorsOfGroup(kfp),tail));
   od;
   gens:=Group(gens);
+
   if domon<>false then
     nr:=ReducedConfluentRewritingSystem(Range(fam!.tzrules.monhom));
     if HasLevelsOfGenerators(OrderingOfRewritingSystem(nr)) then
@@ -1491,6 +1506,16 @@ local fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
     nr:=KnuthBendixRewritingSystem(FamilyObj(One(fmon)),ord);
     MakeConfluent(nr);
 
+    # make h generators corresponding to fp
+    hgens:=[];
+    for i in GeneratorsOfGroup(Range(fam!.fphom)) do
+      Add(hgens,HybridGroupElement(fam,UnderlyingElement(i),fam!.normalone));
+    od;
+    for i in GeneratorsOfGroup(Range(iso)) do
+      Add(hgens,HybridGroupElement(fam,fam!.factorone,
+        PreImagesRepresentative(iso,i)));
+    od;
+
     nr:=MakeFpGroupToFpMonoidIsomorphismGensFirst(f,fmon);
     SetConfluentMonoidPresentationForGroup(gens,
       rec(fphom:=IdentityMapping(f),
@@ -1498,7 +1523,8 @@ local fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 
     SetConfluentMonoidPresentationForGroup(h,
       rec(fphom:=GroupHomomorphismByImagesNC(h,f,
-            GeneratorsOfGroup(h),GeneratorsOfGroup(gens)),
+            Concatenation(GeneratorsOfGroup(h),hgens),
+            Concatenation(GeneratorsOfGroup(gens),GeneratorsOfGroup(f))),
         monhom:=nr,ordering:=ord));
     
   fi;
@@ -1926,6 +1952,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     Add(mo,b);
   od;
   if Size(cov)=Size(Image(q)) then return q;fi;
+  Print("Found module action\n");
 
   fp:=FpGroupHybrid(cov);
   SetSize(fp,Size(cov));
