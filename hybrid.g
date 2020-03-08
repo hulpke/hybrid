@@ -1334,7 +1334,95 @@ end);
 # convert (full family) hybrid to fp
 FpGroupHybrid:=function(h)
 local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
-  fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k;
+  fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,addrule,redwith;
+
+  redwith:=function(w,rule)
+  local p;
+    p:=PositionSublist(w,rule[1]);
+    while p<>fail do
+      w:=Concatenation(w{[1..p-1]},rule[2],w{[p+Length(rule[1])..Length(w)]});
+      p:=PositionSublist(w,rule[1]);
+    od;
+    return w;
+  end;
+
+  addrule:=function(rul)
+  local t,i,w,ch,lr,lrw,sel,stack;
+    t:=List(rul,LetterRepAssocWord);
+    # reduce rule with existing
+
+    ch:=0;
+    for i in tzrules do
+      w:=redwith(t[2],i);
+      if w<>t[2] then
+        if ch=0 then ch:=1;fi;
+        t[2]:=w;
+      fi;
+      w:=redwith(t[1],i);
+      if w<>t[1] then
+        ch:=2;
+        t[1]:=w;
+      fi;
+    od;
+
+    if ch>0 then 
+      if t[1]=t[2] then return; fi; # rule gone
+      rul:=List(t,x->AssocWordByLetterRep(FamilyObj(rul[1]),x));
+      if ch=2 and IsLessThanOrEqualUnder(ord,rul[1],rul[2]) then
+        t:=Reversed(t);
+        rul:=Reversed(rul);
+      fi;
+    fi;
+
+    # now reduce existing rules with new
+    sel:=[1..Length(rules)];
+    stack:=[];
+    for i in [1..Length(rules)] do
+      lr:=tzrules[i];
+      lrw:=rules[i];
+      ch:=0;
+      w:=redwith(lr[2],t);
+      if w<>lr[2] then
+        if ch=0 then ch:=1;fi;
+        lr[2]:=w;
+        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
+      fi;
+      w:=redwith(lr[1],t);
+      if w<>lr[1] then
+        ch:=2;
+        lr[1]:=w;
+        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
+      fi;
+      if ch>0 then
+        RemoveSet(sel,i);
+        if lr[1]<>lr[2] then
+          if ch=2 and IsLessThanOrEqualUnder(ord,lrw[1],lrw[2]) then
+            lr:=Reversed(lr);
+            lrw:=Reversed(lrw);
+          fi;
+          Add(stack,[lr,lrw]);
+        fi;
+      fi;
+      
+    od;
+    if Length(sel)<Length(rules) then
+      # Print("kill ",Length(rules)-Length(sel)," to ",Length(stack),"\n");
+      rules:=rules{sel};
+      tzrules:=tzrules{sel};
+    fi;
+
+    Add(rules,rul);
+    Add(tzrules,t);
+
+    if Length(stack)>0 then
+      for i in stack do
+        # delayed add of changed old rules. Will not cause problems as
+        # stacks are only processed after new rule was added.
+        addrule(i[2]);
+      od;
+    fi;
+
+  end;
 
   fam:=FamilyObj(One(h));
   fs:=HybridBits(h);
@@ -1358,19 +1446,36 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   pres:=fam!.presentation;
   f:=FreeGroup(Length(fam!.auts)
        +Length(FreeGeneratorsOfFpGroup(kfp)));
-  head:=GeneratorsOfGroup(f){[1..Length(fam!.auts)]};
-  tail:=GeneratorsOfGroup(f){[Length(head)+1..Length(GeneratorsOfGroup(f))]};
   rels:=[];
 
   if domon<>false then
     fmon:=List(GeneratorsOfGroup(f),String);
     fmon:=Concatenation(List(fmon,x->[x,Concatenation(x,"^-1")]));
     fmon:=FreeMonoid(fmon);
-    mhead:=GeneratorsOfMonoid(fmon){[1..2*(Length(head))]};
+    mhead:=GeneratorsOfMonoid(fmon){[1..2*(Length(fam!.auts))]};
     mtail:=GeneratorsOfMonoid(fmon){
-      [2*(Length(head))+1..Length(GeneratorsOfMonoid(fmon))]};
+      [2*(Length(fam!.auts))+1..Length(GeneratorsOfMonoid(fmon))]};
     rules:=[];
+    tzrules:=[];
+
+    nr:=ReducedConfluentRewritingSystem(Range(fam!.tzrules.monhom));
+    if HasLevelsOfGenerators(OrderingOfRewritingSystem(nr)) then
+      head:=LevelsOfGenerators(OrderingOfRewritingSystem(nr));
+    else
+      head:=List(GeneratorsOfMonoid(Range(fam!.tzrules.monhom)),x->1);
+    fi;
+    if HasLevelsOfGenerators(kermon.ordering) then
+      tail:=LevelsOfGenerators(kermon.ordering);
+    else
+      tail:=List(kermon.freegens,x->1);
+    fi;
+    #head:=Concatenation(head,Maximum(head)+LevelsOfGenerators(kermon.ordering));
+    head:=Concatenation(head+Maximum(tail),tail);
+    ord:=WreathProductOrdering(fmon,head);
   fi;
+
+  head:=GeneratorsOfGroup(f){[1..Length(fam!.auts)]};
+  tail:=GeneratorsOfGroup(f){[Length(head)+1..Length(GeneratorsOfGroup(f))]};
 
   # relators of kernel
   for i in RelatorsOfFpGroup(kfp) do
@@ -1379,7 +1484,7 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 
   if domon<>false then
     for i in RelationsOfFpMonoid(Range(kermon.monhom)) do
-      Add(rules,List(i,x->MappedWord(x,kermon.freegens,mtail )));
+      addrule(List(i,x->MappedWord(x,kermon.freegens,mtail )));
     od;
   fi;
 
@@ -1390,22 +1495,22 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
       Add(rels,tail[j]^head[i]/MappedWord(ImagesRepresentative(iso,img),
         GeneratorsOfGroup(kfp),tail));
       if domon<>false then
-        Add(rules,[mtail[2*j-1]*mhead[2*i-1],
+        addrule([mtail[2*j-1]*mhead[2*i-1],
           mhead[2*i-1]*MappedWord(UnderlyingElement(
             ImagesRepresentative(kermon.monhom,
              ImagesRepresentative(iso,img))),kermon.freegens,mtail) ]);
-        Add(rules,[mtail[2*j]*mhead[2*i-1],
+        addrule([mtail[2*j]*mhead[2*i-1],
           mhead[2*i-1]*MappedWord(UnderlyingElement(
             ImagesRepresentative(kermon.monhom,
              ImagesRepresentative(iso,img^-1))),kermon.freegens,mtail) ]);
 
         # now map with inverse
         img:=PreImagesRepresentative(fam!.auts[i],pcgs[j]);
-        Add(rules,[mtail[2*j-1]*mhead[2*i],
+        addrule([mtail[2*j-1]*mhead[2*i],
           mhead[2*i]*MappedWord(UnderlyingElement(
             ImagesRepresentative(kermon.monhom,
              ImagesRepresentative(iso,img))),kermon.freegens,mtail) ]);
-        Add(rules,[mtail[2*j]*mhead[2*i],
+        addrule([mtail[2*j]*mhead[2*i],
           mhead[2*i]*MappedWord(UnderlyingElement(
             ImagesRepresentative(kermon.monhom,
              ImagesRepresentative(iso,img^-1))),kermon.freegens,mtail) ]);
@@ -1468,7 +1573,7 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 #
 #        fi;
       fi;
-      Add(rules,nr);
+      addrule(nr);
     od;
   fi;
 
@@ -1484,24 +1589,13 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   gens:=Group(gens);
 
   if domon<>false then
-    nr:=ReducedConfluentRewritingSystem(Range(fam!.tzrules.monhom));
-    if HasLevelsOfGenerators(OrderingOfRewritingSystem(nr)) then
-      head:=LevelsOfGenerators(OrderingOfRewritingSystem(nr));
-    else
-      head:=List(GeneratorsOfMonoid(Range(fam!.tzrules.monhom)),x->1);
-    fi;
-    if HasLevelsOfGenerators(kermon.ordering) then
-      tail:=LevelsOfGenerators(kermon.ordering);
-    else
-      tail:=List(kermon.freegens,x->1);
-    fi;
-    #head:=Concatenation(head,Maximum(head)+LevelsOfGenerators(kermon.ordering));
-    head:=Concatenation(head+Maximum(tail),tail);
-    ord:=WreathProductOrdering(fmon,head);
+
     fmon:=FactorFreeMonoidByRelations(fmon,rules);
     nr:=KnuthBendixRewritingSystem(FamilyObj(One(fmon)),ord);
+Print("Have ",Length(rules)," rules\n");
     MakeConfluent(nr);
     rules:=Rules(nr);
+Print("Now ",Length(rules)," rules\n");
     fmon:=FactorFreeMonoidByRelations(FreeMonoidOfFpMonoid(fmon),rules);
     nr:=KnuthBendixRewritingSystem(FamilyObj(One(fmon)),ord);
     MakeConfluent(nr);
