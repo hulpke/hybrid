@@ -886,6 +886,7 @@ end;
 
 DoReverseWords:=function(pres,pg)
 local gens,g,ep,img;
+  Error("not used");
   if not IsBound(pres.reversewords) then
 
     gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
@@ -1230,7 +1231,7 @@ InstallMethod(ImagesRepresentative,"hybrid",FamSourceEqFamElm,
     IsMultiplicativeElementWithInverse and IsHybridGroupElementDefaultRep],0,
 function(hom,elm)
 local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
-      pcgs,sortfun,e,ro,i,nn,ao;
+      pcgs,sortfun,e,ro,i,nn,ao,pres,gens;
   mgi:=MappingGeneratorsImages(hom);
   if not IsBound(hom!.underlyingpchom) then
     # compute good generators
@@ -1240,10 +1241,21 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     fi;
     hb:=HybridBits(src);
     fam:=FamilyObj(One(src));
-    # need to go through words to ensure same image
-    map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-    toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[1]));
-    topi:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[2]));
+    Print("Warning: Generators number not clearly defined\n");
+    nn:=List([1..Length(GeneratorsOfGroup(Source(hom)))],x->Tuple([mgi[1][x],mgi[2][x]]));
+    pres:=fam!.presentation;
+    gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
+            GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
+    map:=GroupGeneralMappingByImagesNC(fam!.factgrp,Group(nn),gens,nn);
+    a:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
+    toppers:=List(a,x->x[1]);
+    topi:=List(a,x->x[2]);
+    if not IsPermGroup(fam!.factgrp) then Error("eords");fi;
+
+    # # need to go through words to ensure same image
+    # map:=DoReverseWords(fam!.presentation,fam!.factgrp);
+    # toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[1]));
+    # topi:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[2]));
     ker:=[];
     for r in fam!.presentation.relators do
       a:=MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),toppers);
