@@ -910,12 +910,14 @@ HybridToppers:=function(G)
 local map,fam,pres,gens;
   fam:=FamilyObj(One(G));
   if not IsBound(G!.toppers) then
-    pres:=fam!.presentation;
-    gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
-            GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
-    map:=GroupHomomorphismByImagesNC(G,fam!.factgrp,
-       GeneratorsOfGroup(G){[1..Length(gens)]},gens);
-    G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->PreImagesRepresentative(map,x));
+    #pres:=fam!.presentation;
+    #gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
+    #        GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
+    gens:=List(GeneratorsOfGroup(G),x->PreImagesRepresentative(fam!.fphom,
+        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
+    map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
+
+    G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
     #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
     #G!.toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
     #  GeneratorsOfGroup(G)));
@@ -1237,19 +1239,20 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     # compute good generators
     src:=Source(hom);
     if GeneratorsOfGroup(src)<>mgi[1] then
-      src:=Group(mgi[1]);
+      src:=GroupWithGenerators(mgi[1]);
     fi;
     hb:=HybridBits(src);
     fam:=FamilyObj(One(src));
-    Print("Warning: Generators number not clearly defined\n");
-    nn:=List([1..Length(GeneratorsOfGroup(Source(hom)))],x->Tuple([mgi[1][x],mgi[2][x]]));
-    pres:=fam!.presentation;
-    gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
-            GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
+#if Length(mgi[1])<>Length(GeneratorsOfGroup(Source(hom))) then Error("UNUMU"); fi;
+    nn:=List([1..Length(mgi[1])],x->Tuple([mgi[1][x],mgi[2][x]]));
+
+    gens:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
+        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
     map:=GroupGeneralMappingByImagesNC(fam!.factgrp,Group(nn),gens,nn);
     a:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
     toppers:=List(a,x->x[1]);
     topi:=List(a,x->x[2]);
+
     if not IsPermGroup(fam!.factgrp) then Error("eords");fi;
 
     # # need to go through words to ensure same image
@@ -1257,6 +1260,11 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     # toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[1]));
     # topi:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[2]));
     ker:=[];
+
+    for r in Filtered([1..Length(mgi[1])],x->IsOne(mgi[1][x]![1])) do
+      Add(ker,[mgi[1][r],mgi[1][r]![2],mgi[2][r]]);
+    od;
+
     for r in fam!.presentation.relators do
       a:=MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),toppers);
       if not IsOne(a) then
@@ -1438,7 +1446,8 @@ end);
 # convert (full family) hybrid to fp
 FpGroupHybrid:=function(h)
 local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
-  fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,addrule,redwith;
+  fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,addrule,redwith,
+  fphom;
 
   redwith:=function(w,rule)
   local p;
@@ -1725,11 +1734,13 @@ Print("Have ",Length(rules)," rules\n");
       rec(fphom:=IdentityMapping(f),
           monhom:=nr,ordering:=ord));
 
+    fphom:=GroupHomomorphismByImagesNC(h,f,
+          hgens,GeneratorsOfGroup(f));
+          #Concatenation(GeneratorsOfGroup(h),hgens),
+          #Concatenation(GeneratorsOfGroup(gens),GeneratorsOfGroup(f)));
+    SetIsBijective(fphom,true);
     SetConfluentMonoidPresentationForGroup(h,
-      rec(fphom:=GroupHomomorphismByImagesNC(h,f,
-            Concatenation(GeneratorsOfGroup(h),hgens),
-            Concatenation(GeneratorsOfGroup(gens),GeneratorsOfGroup(f))),
-        monhom:=nr,ordering:=ord));
+      rec(fphom:=fphom,monhom:=nr,ordering:=ord));
     
   fi;
 
@@ -2185,4 +2196,22 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
 
 end;
 
+GeneralizedFibonacciGroup:=function(n,m,k)
+local f,gens,rels,i;
+  f:=FreeGroup(n,"x");
+  gens:=GeneratorsOfGroup(f);
+  gens:=Concatenation(gens,gens,gens);
+  rels:=[];
+  for i in [1..n] do
+    Add(rels,gens[i]*gens[i+m]/gens[i+k]);
+  od;
+  return f/rels;
+end;
 
+CavicchioliGroup:=function(q)
+local f,a,b,rels;
+  f:=FreeGroup("a","b");
+  a:=f.1;b:=f.2;
+  rels:=[a*b*a^-2*b*a*b^-1,a*(b^-1*a^3*b^-1*a^-3)^q];
+  return f/rels;
+end;
