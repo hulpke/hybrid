@@ -23,14 +23,14 @@ G:=F/r;
 q:=GQuotients(G,AlternatingGroup(6))[1];
 cov:=LiftQuotientHybrid(q,3);;LogInt(Size(Image(cov))/360,3); # returns 7
 cov:=LiftQuotientHybrid(cov,3);;LogInt(Size(Image(cov))/360,3); # returns 15
-cov:=LiftQuotientHybrid(cov,3);;LogInt(Size(Image(cov))/360,3); # returns 15
+cov:=LiftQuotientHybrid(cov,3);;LogInt(Size(Image(cov))/360,3); # returns 40
 
-# Coxeter (3,7,10;10)
+# Coxeter (3,7,15;10)
 
 F:=FreeGroup("a","b");
-r:=ParseRelators(F,"a3,b7,(ab)10,[a,b]10");
+r:=ParseRelators(F,"a3,b7,(ab)15,[a,b]10");
 G:=F/r;
-q:=GQuotients(G,AlternatingGroup(10));Length(q);
+q:=GQuotients(G,AlternatingGroup(10));Length(q); # finds 4
 sz:=Factorial(10)/2;
 
 img:=Group(List(GeneratorsOfGroup(G),x->ImagesRepresentative(q[1],x)));;
@@ -41,9 +41,18 @@ LogInt(Size(Image(cov))/sz,2); # returns 25
 
 geni:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(cov,x));;
 cov:=LiftQuotientHybrid(cov,2:irr:=[geni,irr[2]],dims:=[1,8]);;
-LogInt(Size(Image(cov))/sz,2); # returns 31
+LogInt(Size(Image(cov))/sz,2); # returns 30
+
+cov:=LiftQuotientHybrid(q[1],3:dims:=[1..12]);;
+LogInt(Size(Image(cov))/sz,3); # returns 19
+
+cov:=LiftQuotientHybrid(q[1],5:dims:=[1..12]);;
+LogInt(Size(Image(cov))/sz,5); # returns 8
 
 cov:=LiftQuotientHybrid(q[2],2:dims:=[1,8]);;
 LogInt(Size(Image(cov))/sz,2); # returns 8
+
+cov:=LiftQuotientHybrid(q[3],2:dims:=[1,8]);;
+LogInt(Size(Image(cov))/sz,2); # returns 9
 
 
