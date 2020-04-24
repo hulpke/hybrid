@@ -1444,8 +1444,8 @@ function(g,str)
 end);
 
 
-if not IsBound(MakeFpGroupToFpMonoidIsomorphismGensFirst) then
-  BindGlobal("MakeFpGroupToFpMonoidIsomorphismGensFirst",function(fp,m)
+if not IsBound(MakeFpGroupToFpMonoidIsomorphismType1) then
+  BindGlobal("MakeFpGroupToFpMonoidIsomorphismType1",function(fp,m)
   local hom;
     hom:=MagmaIsomorphismByFunctionsNC(fp,m,
           function(w)
@@ -1624,7 +1624,7 @@ if not IsBound(MakeFpGroupToFpMonoidIsomorphismGensFirst) then
     # finally create 
     m:=FactorFreeMonoidByRelations(fm,rules);
 
-    hom:=MakeFpGroupToFpMonoidIsomorphismGensFirst(fp,m);
+    hom:=MakeFpGroupToFpMonoidIsomorphismType1(fp,m);
 
     j:=rec(fphom:=iso,monhom:=hom);
     if dept=fail then
@@ -1924,7 +1924,7 @@ Print("Have ",Length(rules)," rules\n");
         PreImagesRepresentative(iso,i)));
     od;
 
-    nr:=MakeFpGroupToFpMonoidIsomorphismGensFirst(f,fmon);
+    nr:=MakeFpGroupToFpMonoidIsomorphismType1(f,fmon);
     SetConfluentMonoidPresentationForGroup(gens,
       rec(fphom:=IdentityMapping(f),
           monhom:=nr,ordering:=ord));
