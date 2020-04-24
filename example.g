@@ -23,7 +23,7 @@ G:=F/r;
 q:=GQuotients(G,AlternatingGroup(6))[1];
 cov:=LiftQuotientHybrid(q,3);;LogInt(Size(Image(cov))/360,3); # returns 7
 cov:=LiftQuotientHybrid(cov,3);;LogInt(Size(Image(cov))/360,3); # returns 15
-# the following takes a while 
+# the following takes a while in GAP 4.11
 cov:=LiftQuotientHybrid(cov,3);;LogInt(Size(Image(cov))/360,3); # returns 40
 
 # Coxeter (3,7,15;10)
