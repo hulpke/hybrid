@@ -127,10 +127,59 @@ function(a,b)
   return a![1]<b![1] or (a![1]=b![1] and a![2]<b![2]);
 end);
 
+BindGlobal("HybridAutMats",function(fam)
+local g,gf,m,mats,a,pcgs;
+  g:=Source(fam!.auts[1]);
+  if Size(g)>1 and IsElementaryAbelian(g) then
+    if IsPcGroup(g) then
+      pcgs:=CanonicalPcgs(InducedPcgsWrtFamilyPcgs(g));
+    else
+      pcgs:=Pcgs(g);
+    fi;
+    gf:=GF(RelativeOrders(pcgs)[1]);
+    mats:=[];
+    for a in fam!.auts do
+      m:=List(pcgs,x->ExponentsOfPcElement(pcgs,ImagesRepresentative(a,x))*One(gf));
+      Add(mats,ImmutableMatrix(gf,m));
+    od;
+    fam!.autgf:=gf;
+    fam!.autspcgs:=pcgs;
+    fam!.autmats:=mats;
+    fam!.autmatsinv:=List(mats,Inverse);
+  else
+    fam!.autmats:=fail;
+  fi;
+end);
+
+BindGlobal("HybridGroupAutrace",function(fam,m,f)
+  local i,mm;
+    if IsAssocWord(f) then
+      f:=LetterRepAssocWord(f);
+    fi;
+    if fam!.autmats<>fail then
+      mm:=ExponentsOfPcElement(fam!.autspcgs,m)*One(fam!.autgf);
+      mm:=ImmutableVector(fam!.autgf,mm);
+      for i in f do
+        if i>0 then mm:=mm*fam!.autmats[i];
+        else mm:=mm*fam!.autmatsinv[-i];fi;
+      od;
+      mm:=PcElementByExponents(fam!.autspcgs,List(mm,Int));
+      return mm;
+#    else 
+#      mm:=fail;
+    fi;
+    for i in f do
+      if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
+      else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
+    od;
+#    if mm<>fail and m<>mm then Error("AUAU");fi;
+    return m;
+  end);
+
 InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(a,b)
-local fam,autrace,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
+local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
       sta,cancel;
   fam:=FamilyObj(a);
 
@@ -139,20 +188,20 @@ local fam,autrace,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
     return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
   fi;
 
-  autrace:=function(m,f)
-  local i;
-    if IsAssocWord(f) then
-      f:=LetterRepAssocWord(f);
-    fi;
-    for i in f do
-      if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
-      else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
-    od;
-    return m;
-  end;
+#  autrace:=function(m,f)
+#  local i;
+#    if IsAssocWord(f) then
+#      f:=LetterRepAssocWord(f);
+#    fi;
+#    for i in f do
+#      if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
+#      else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
+#    od;
+#    return m;
+#  end;
 
   x:=a![1]*b![1]; # top product
-  y:=autrace(a![2],b![1])*b![2]; #bottom product
+  y:=HybridGroupAutrace(fam,a![2],b![1])*b![2]; #bottom product
 
   # now reduce x with rules
   #x:=UnderlyingElement(ImagesRepresentative(fam!.monhom,
@@ -196,7 +245,7 @@ local fam,autrace,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
           if popo<>fail and not IsOne(fam!.tails[popo]) then
             #pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
             #    ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
-            y:=autrace(fam!.tails[popo],tail)*y;
+            y:=HybridGroupAutrace(fam,fam!.tails[popo],tail)*y;
           fi;
           #x:=x*tail;
           # do free cancellation, which does not involve tails
@@ -244,7 +293,7 @@ local fam,autrace,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 #          pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
 #              ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
 #          Error("bla");
-#          y:=autrace(fam!.tails[popo],pretail)*y;
+#          y:=HybridGroupAutrace(fam,fam!.tails[popo],pretail)*y;
 #        fi;
 #        x:=x*tail;
 #        has:=true;
@@ -302,6 +351,7 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
+  HybridAutMats(fam);
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(pcgp);
   fam!.normal:=pcgp;
@@ -519,6 +569,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
   if fail in nfam!.autsinv then Error("automorphisms are not");fi;
+  HybridAutMats(nfam);
 
   # now redo factor group, presentation, etc.
   if IsHybridGroupElementCollection(fam!.factgrp) then
@@ -535,7 +586,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     nfam!.factgrp:=nff;
 
   else
-    nat:=NaturalHomomorphismByNormalSubgroup(fam!.factgrp,
+    nat:=NaturalHomomorphismByNormalSubgroupNC(fam!.factgrp,
       SubgroupNC(fam!.factgrp,fpcgsgens));
     nff:=Group(List(GeneratorsOfGroup(fam!.factgrp){[1..pos]},
       x->ImagesRepresentative(nat,x)),One(Range(nat)));
@@ -775,6 +826,7 @@ local ogens,n,fam,type,gens,i;
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
+  HybridAutMats(fam);
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(ker);
   fam!.normal:=ker;
@@ -1041,7 +1093,9 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
 #   if Size(ker)<>Size(fs[2]) then Error("kernel confusion");fi;
 
   ker:=fs[2];
-  pcgs:=Pcgs(ker);
+  # Canonical cleans out cruft
+  pcgs:=CanonicalPcgs(Pcgs(ker));
+  ker:=SubgroupNC(Parent(ker),pcgs);
 
   nfam:=NewFamily("Own Hybrid elements family",IsHybridGroupElement);
   nfam!.pckern:=pcgs;
@@ -1051,7 +1105,7 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
   nfam!.tzrules:=TranslatedMonoidRules(nfam!.monhom);
   nfam!.fphom:=fam!.fphom;
   nfam!.factorone:=fam!.factorone;
-  auts:=List(top,x->GroupHomomorphismByImages(ker,ker,pcgs,
+  auts:=List(top,x->GroupHomomorphismByImagesNC(ker,ker,pcgs,
     List(pcgs,
       y->(HybridGroupElement(fam,fam!.factorone,y)^x)![2])));
 
@@ -1061,6 +1115,7 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
 
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
+  HybridAutMats(nfam);
   nfam!.normalone:=fam!.normalone;
   nfam!.normal:=ker;
   nfam!.defaultType:=NewType(nfam,IsHybridGroupElementDefaultRep);
@@ -1102,7 +1157,7 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   fs:=HybridBits(G);
 
   N:=Group(List(N,x->x![2]));
-  nat:=NaturalHomomorphismByNormalSubgroup(fs[2],N);
+  nat:=NaturalHomomorphismByNormalSubgroupNC(fs[2],N);
   ker:=Image(nat);
   pcgs:=Pcgs(ker);
 
@@ -1118,12 +1173,13 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   nfam!.tails:=List(fam!.tails,x->ImagesRepresentative(nat,x));
 
   # transfer automorphisms
-  auts:=List(fam!.auts,hom->GroupHomomorphismByImages(ker,ker,pcgs,
+  auts:=List(fam!.auts,hom->GroupHomomorphismByImagesNC(ker,ker,pcgs,
     List(pcgs,x->ImagesRepresentative(nat,ImagesRepresentative(hom,
       PreImagesRepresentative(nat,x))))));
 
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
+  HybridAutMats(nfam);
   nfam!.normalone:=One(Range(nat));
   nfam!.normal:=Image(nat);
   type:=NewType(nfam,IsHybridGroupElementDefaultRep);
@@ -1188,7 +1244,7 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
       List(gen1,x->ImagesRepresentative(e1,ImagesRepresentative(fg!.auts[i],x))),
       List(gen2,x->ImagesRepresentative(e2,ImagesRepresentative(fh!.auts[i],x)))
     );
-    aut:=GroupHomomorphismByImages(d,d,gens,aut);
+    aut:=GroupHomomorphismByImagesNC(d,d,gens,aut);
     Add(auts,aut);
   od;
 
@@ -1201,6 +1257,7 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
   nfam!.factorone:=fg!.factorone;
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
+  HybridAutMats(nfam);
   nfam!.normalone:=One(d);
   nfam!.normal:=d;
   type:=NewType(nfam,IsHybridGroupElementDefaultRep);
@@ -1654,6 +1711,7 @@ if not IsBound(MakeFpGroupToMonoidHomType1) then
       j.ordering:=WreathProductOrdering(fm,dept);
     fi;
     k:=KnuthBendixRewritingSystem(FamilyObj(One(m)),j.ordering);
+    k!.reduced:=true;
     MakeConfluent(k); # will store in monoid as reducedConfluent
     return j;
   end);
@@ -1772,6 +1830,7 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
     kermon:=ShallowCopy(ConfluentMonoidPresentationForGroup(fs[2]));
     kermon.freegens:=FreeGeneratorsOfFpMonoid(Range(kermon.monhom));
     iso:=kermon!.fphom;
+
   else
     iso:=IsomorphismFpGroup(fs[2]);
   fi;
@@ -2369,7 +2428,6 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     cov:=SubdirectHybrid(cov,b);
   od;
 
-acov:=cov;
   b:=HybridBits(cov);
   SetSize(cov,Product(HybridBits(cov),Size));
   fam:=FamilyObj(One(cov));
