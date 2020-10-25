@@ -954,7 +954,6 @@ end;
 
 DoReverseWords:=function(pres,pg)
 local gens,g,ep,img;
-  Error("not used");
   if not IsBound(pres.reversewords) then
 
     gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
@@ -962,20 +961,15 @@ local gens,g,ep,img;
     g:=Group(gens);
     ep:=EpimorphismFromFreeGroup(g);
 
-    if Size(g)<10^6 and not IsHybridGroupElementCollection(g) then
-      # get shortest word form to be faster
-      pres.reversewords:=[Source(ep),List(GeneratorsOfGroup(pg),
-        x->Factorization(g,x))];
-    else
-      pres.reversewords:=[Source(ep),List(GeneratorsOfGroup(pg),
-        x->PreImagesRepresentative(ep,x))];
-    fi;
+    # get shortest word form to be faster
+    pres.reversewords:=[Source(ep),List(GeneratorsOfGroup(pg),
+      x->Factorization(g,x))];
   fi;
   return pres.reversewords;
 end;
 
 HybridToppers:=function(G)
-local map,fam,pres,gens;
+local map,fam,pres,gens,gp;
   fam:=FamilyObj(One(G));
   if not IsBound(G!.toppers) then
     #pres:=fam!.presentation;
@@ -983,12 +977,17 @@ local map,fam,pres,gens;
     #        GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
     gens:=List(GeneratorsOfGroup(G),x->PreImagesRepresentative(fam!.fphom,
         ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-    map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
 
-    G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-    #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-    #G!.toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
-    #  GeneratorsOfGroup(G)));
+    if Size(fam!.factgrp)>10^6 then
+      map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
+      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
+    else
+      gp:=Group(gens,One(fam!.factgrp));
+      map:=EpimorphismFromFreeGroup(gp);
+      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),
+        x->MappedWord(Factorization(gp,x),
+          MappingGeneratorsImages(map)[1],GeneratorsOfGroup(G)));
+    fi;
   fi;
   return G!.toppers;
 end;
@@ -1348,9 +1347,32 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
                 MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),topi)]);
       fi;
     od;
+
     sub:=Group(List(ker,x->x[2]));
+    if Size(sub)<Size(hb[2]) then
+      # clean out generators top with toppers
+      for r in [1..Length(mgi)] do
+        a:=mgi{[1,2]}[r]; # gen and image
+        e:=a[1]![1]; # top word
+        a[1]:=LeftQuotient(
+          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
+            toppers),a[1]);
+        a[2]:=LeftQuotient(
+          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
+            topi),a[2]);
+        if not a[1]![2] in sub then
+          Add(ker,[a[1],a[1]![2],a[2]]);
+          sub:=ClosureGroup(sub,a[1]![2]);
+#          Print("yay\n");
+#        else
+#          Print("nee\n");
+        fi;
+      od;
+    fi;
 
     pcgs:=FamilyPcgs(hb[2]);
+
+
     if Size(hb[2])>1 and (IsAssocWord(ker[1][3]) or IsElementOfFpGroup(ker[1][3])) then
       e:=3*Length(pcgs);
     else
