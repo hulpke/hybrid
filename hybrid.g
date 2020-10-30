@@ -978,7 +978,7 @@ local map,fam,pres,gens,gp;
     gens:=List(GeneratorsOfGroup(G),x->PreImagesRepresentative(fam!.fphom,
         ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
 
-    if Size(fam!.factgrp)>10^6 then
+    if Size(fam!.factgrp)>10^6 or not IsPermGroup(fam!.factgrp) then
       map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
       G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
     else
@@ -1743,100 +1743,86 @@ fi;
 FpGroupHybrid:=function(h)
 local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,addrule,redwith,
-  fphom;
+  fphom,kb;
 
-  redwith:=function(w,rule)
-  local p;
-    p:=PositionSublist(w,rule[1]);
-    while p<>fail do
-      w:=Concatenation(w{[1..p-1]},rule[2],w{[p+Length(rule[1])..Length(w)]});
-      p:=PositionSublist(w,rule[1]);
-    od;
-    return w;
-  end;
+#  redwith:=function(w,rule)
+#  local p;
+#    p:=PositionSublist(w,rule[1]);
+#    while p<>fail do
+#      w:=Concatenation(w{[1..p-1]},rule[2],w{[p+Length(rule[1])..Length(w)]});
+#      p:=PositionSublist(w,rule[1]);
+#    od;
+#    return w;
+#  end;
 
   addrule:=function(rul)
-  local t,ot,i,w,ch,lr,lrw,sel,stack;
-    t:=List(rul,LetterRepAssocWord);
-    # reduce rule with existing
-
-    ot:=ShallowCopy(t);
-    t:=[ReduceLetterRepWordsRewSys(tzrules,t[1]),ReduceLetterRepWordsRewSys(tzrules,t[2])];
-    #ch:=0;
-    #repeat
-    #  ot:=ShallowCopy(t);
-    #  for i in tzrules do
-    #    w:=redwith(t[2],i);
-    #    if w<>t[2] then
-    #      if ch=0 then ch:=1;fi;
-    #      t[2]:=w;
-    #    fi;
-    #    w:=redwith(t[1],i);
-    #    if w<>t[1] then
-    #      ch:=2;
-    #      t[1]:=w;
-    #    fi;
-    #  od;
-    #until t=ot;
-
-    if t[1]=t[2] then return; fi; # rule gone
-    #if ch>0 then 
-    if t<>ot then
-      rul:=List(t,x->AssocWordByLetterRep(FamilyObj(rul[1]),x));
-      if t[1]<>ot[1] and IsLessThanOrEqualUnder(ord,rul[1],rul[2]) then
-        t:=Reversed(t);
-        rul:=Reversed(rul);
-      fi;
-    fi;
-
-    # now reduce existing rules with new
-    sel:=[1..Length(rules)];
-    stack:=[];
-    for i in [1..Length(rules)] do
-      lr:=tzrules[i];
-      lrw:=rules[i];
-      ch:=0;
-      w:=redwith(lr[2],t);
-      if w<>lr[2] then
-        if ch=0 then ch:=1;fi;
-        lr[2]:=w;
-        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
-      fi;
-      w:=redwith(lr[1],t);
-      if w<>lr[1] then
-        ch:=2;
-        lr[1]:=w;
-        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
-      fi;
-      if ch>0 then
-        RemoveSet(sel,i);
-        if lr[1]<>lr[2] then
-          if ch=2 and IsLessThanOrEqualUnder(ord,lrw[1],lrw[2]) then
-            lr:=Reversed(lr);
-            lrw:=Reversed(lrw);
-          fi;
-          Add(stack,[lr,lrw]);
-        fi;
-      fi;
-      
-    od;
-    if Length(sel)<Length(rules) then
-      # Print("kill ",Length(rules)-Length(sel)," to ",Length(stack),"\n");
-      rules:=rules{sel};
-      tzrules:=tzrules{sel};
-    fi;
-
-    Add(rules,rul);
-    Add(tzrules,t);
-
-    if Length(stack)>0 then
-      for i in stack do
-        # delayed add of changed old rules. Will not cause problems as
-        # stacks are only processed after new rule was added.
-        addrule(i[2]);
-      od;
-    fi;
-
+    #Print("Add:",rul,"\n");
+    AddRuleReduced(kb,List(rul,LetterRepAssocWord));
+#  local t,ot,i,w,ch,lr,lrw,sel,stack;
+#    t:=List(rul,LetterRepAssocWord);
+#    # reduce rule with existing
+#
+#    ot:=ShallowCopy(t);
+#    t:=[ReduceLetterRepWordsRewSys(tzrules,t[1]),ReduceLetterRepWordsRewSys(tzrules,t[2])];
+#
+#    if t[1]=t[2] then return; fi; # rule gone
+#    #if ch>0 then 
+#    if t<>ot then
+#      rul:=List(t,x->AssocWordByLetterRep(FamilyObj(rul[1]),x));
+#      if t[1]<>ot[1] and IsLessThanOrEqualUnder(ord,rul[1],rul[2]) then
+#        t:=Reversed(t);
+#        rul:=Reversed(rul);
+#      fi;
+#    fi;
+#
+#    # now reduce existing rules with new
+#    sel:=[1..Length(rules)];
+#    stack:=[];
+#    for i in [1..Length(rules)] do
+#      lr:=tzrules[i];
+#      lrw:=rules[i];
+#      ch:=0;
+#      w:=redwith(lr[2],t);
+#      if w<>lr[2] then
+#        if ch=0 then ch:=1;fi;
+#        lr[2]:=w;
+#        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
+#      fi;
+#      w:=redwith(lr[1],t);
+#      if w<>lr[1] then
+#        ch:=2;
+#        lr[1]:=w;
+#        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
+#      fi;
+#      if ch>0 then
+#        RemoveSet(sel,i);
+#        if lr[1]<>lr[2] then
+#          if ch=2 and IsLessThanOrEqualUnder(ord,lrw[1],lrw[2]) then
+#            lr:=Reversed(lr);
+#            lrw:=Reversed(lrw);
+#          fi;
+#          Add(stack,[lr,lrw]);
+#        fi;
+#      fi;
+#      
+#    od;
+#    if Length(sel)<Length(rules) then
+#      # Print("kill ",Length(rules)-Length(sel)," to ",Length(stack),"\n");
+#      rules:=rules{sel};
+#      tzrules:=tzrules{sel};
+#    fi;
+#
+#    Add(rules,rul);
+#    Add(tzrules,t);
+#
+#    if Length(stack)>0 then
+#      for i in stack do
+#        # delayed add of changed old rules. Will not cause problems as
+#        # stacks are only processed after new rule was added.
+#        addrule(i[2]);
+#      od;
+#    fi;
+#
   end;
 
   fam:=FamilyObj(One(h));
@@ -1871,8 +1857,8 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
     mhead:=GeneratorsOfMonoid(fmon){[1..2*(Length(fam!.auts))]};
     mtail:=GeneratorsOfMonoid(fmon){
       [2*(Length(fam!.auts))+1..Length(GeneratorsOfMonoid(fmon))]};
-    rules:=[];
-    tzrules:=[];
+#    rules:=[];
+#    tzrules:=[];
 
     nr:=ReducedConfluentRewritingSystem(Range(fam!.tzrules.monhom));
     if HasLevelsOfGenerators(OrderingOfRewritingSystem(nr)) then
@@ -1885,9 +1871,13 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
     else
       tail:=List(kermon.freegens,x->1);
     fi;
-    #head:=Concatenation(head,Maximum(head)+LevelsOfGenerators(kermon.ordering));
     head:=Concatenation(head+Maximum(tail),tail);
     ord:=WreathProductOrdering(fmon,head);
+    kb:=CreateKnuthBendixRewritingSystem(FamilyObj(One(fmon/[])),ord);
+    if AssertionLevel()<=2 then
+      # assertion level <=2 so the auto tests will never trigger it
+      Unbind(kb!.pairs2check);
+    fi;
   fi;
 
   head:=GeneratorsOfGroup(f){[1..Length(fam!.auts)]};
@@ -2011,6 +2001,13 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 
   if domon<>false then
 
+    if IsBound(kb!.pairs2check) then
+      rules:=StructuralCopy(Rules(kb));
+      MakeConfluent(kb);
+      Assert(3,Set(Rules(kb))=Set(rules));
+    fi;
+
+    rules:=Rules(kb);
     fmon:=FactorFreeMonoidByRelations(fmon,rules);
 
     nr:=KnuthBendixRewritingSystem(fmon,ord:isconfluent);
