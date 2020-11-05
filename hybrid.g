@@ -314,6 +314,70 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   return x;
 end);
 
+BindGlobal("HybridConjugate",function(x,y)
+local fam,h,t,a,yinv,rawinv,tz;
+  fam:=FamilyObj(x);
+  if IsOne(x![2]) then
+    if IsOne(y![2]) then
+      # check whether there is basically a rewriting rule for this
+      # conjugation. Then we can look up the result without arithmetic.
+
+      h:=LetterRepAssocWord(y![1]);
+      a:=Concatenation(LetterRepAssocWord(x![1]),h);
+      tz:=fam!.tzrules.tzrules;
+      t:=First([1..Length(tz)],x->tz[x][1]=a);
+      if t<>fail and Length(tz[t][2])>=Length(h) 
+        and tz[t][2]{[1..Length(h)]}=h then
+        # There is a rule, just for this
+
+        # the rest, after cancellation
+        a:=tz[t][2]{[Length(h)+1..Length(tz[t][2])]};
+        a:=AssocWordByLetterRep(FamilyObj(x![1]),a);
+
+        t:=Position(fam!.presentation.monrulpos,t);
+        if t=fail then
+          t:=fam!.normalone;
+        else
+          t:=fam!.tails[t];
+        fi;
+        a:=HybridGroupElement(fam,a,t);
+        #if a<>x^y then Error("conjugation");fi;
+        return a;
+      fi;
+    fi;
+    h:=x;
+    t:=fail;
+  else
+    h:=HybridGroupElement(fam,x![1],One(x![2]));
+    t:=x![2];
+  fi;
+  if IsOne(h![1]) then
+    a:=h;
+  else
+    Print("four\n");
+    yinv:=y^-1;
+    a:=yinv*h*y;
+    #rawinv:=HybridGroupElement(fam,Inverse(y![1]),fam!.normalone);
+    #a:=\*(rawinv,h:notranslate)*y;
+    #if not IsOne(yinv![2]) then 
+    #  # Need to multiply from left with (1,yinv![2])^(y![1]^-1,1)^-1
+    #  if IsAbelian(fam!.normal) then
+    #    a:=HybridGroupElement(fam,fam!.factorone,
+    #      HybridGroupAutrace(fam,yinv![2],y![1]))*a;
+    #  else
+    #    rawinv:=\*(rawinv,One(fam):notranslate);
+    #    a:=(HybridGroupElement(fam,fam!.factorone,yinv![2])^Inverse(rawinv))*a;
+    #    Error("test this!");
+    #  fi;
+    #fi;
+  fi;
+  if t<>fail then
+    a:=a*HybridGroupElement(fam,One(x![1]),HybridGroupAutrace(fam,t,y![1]));
+  fi;
+  #if a<>x^y then Error("conjugation");fi;
+  return a;
+end);
+
 HybridGroupCocycle:=function(arg)
 local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
       it,hom,trysy,prime,mindeg,ei,mgens,mwrd,nn,newfree,mfpi,mmats,sub,
@@ -561,7 +625,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
   for i in first do
     aut:=[];
     for j in Concatenation(fpp,npp) do
-      Add(aut,newrd(j^i));
+      Add(aut,newrd(HybridConjugate(j,i)));
     od;
     Add(auts,GroupHomomorphismByImagesNC(newpc,newpc,newpcgs,aut));
   od;
@@ -1756,10 +1820,13 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 #  end;
 
   addrule:=function(rul)
+  local t;
+    t:=List(rul,LetterRepAssocWord);
     #Print("Add:",rul,"\n");
-    AddRuleReduced(kb,List(rul,LetterRepAssocWord));
+    AddRuleReduced(kb,t);
+#    if not t in kb!.tzrules then Error("discarded",rul,"\n"); fi;
+
 #  local t,ot,i,w,ch,lr,lrw,sel,stack;
-#    t:=List(rul,LetterRepAssocWord);
 #    # reduce rule with existing
 #
 #    ot:=ShallowCopy(t);
