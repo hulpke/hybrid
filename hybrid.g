@@ -1807,7 +1807,7 @@ fi;
 FpGroupHybrid:=function(h)
 local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,addrule,redwith,
-  fphom,kb;
+  fphom,kb,invliv;
 
 #  redwith:=function(w,rule)
 #  local p;
@@ -1956,49 +1956,6 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   od;
 
   if domon<>false then
-    for i in RelationsOfFpMonoid(Range(kermon.monhom)) do
-      addrule(List(i,x->MappedWord(x,kermon.freegens,mtail )));
-    od;
-  fi;
-
-  # action on kernel
-  for i in [1..Length(fam!.auts)] do
-    for j in [1..Length(pcgs)] do
-      img:=ImagesRepresentative(fam!.auts[i],pcgs[j]);
-      Add(rels,tail[j]^head[i]/MappedWord(ImagesRepresentative(iso,img),
-        GeneratorsOfGroup(kfp),tail));
-      if domon<>false then
-        addrule([mtail[2*j-1]*mhead[2*i-1],
-          mhead[2*i-1]*MappedWord(UnderlyingElement(
-            ImagesRepresentative(kermon.monhom,
-             ImagesRepresentative(iso,img))),kermon.freegens,mtail) ]);
-        addrule([mtail[2*j]*mhead[2*i-1],
-          mhead[2*i-1]*MappedWord(UnderlyingElement(
-            ImagesRepresentative(kermon.monhom,
-             ImagesRepresentative(iso,img^-1))),kermon.freegens,mtail) ]);
-
-        # now map with inverse
-        img:=PreImagesRepresentative(fam!.auts[i],pcgs[j]);
-        addrule([mtail[2*j-1]*mhead[2*i],
-          mhead[2*i]*MappedWord(UnderlyingElement(
-            ImagesRepresentative(kermon.monhom,
-             ImagesRepresentative(iso,img))),kermon.freegens,mtail) ]);
-        addrule([mtail[2*j]*mhead[2*i],
-          mhead[2*i]*MappedWord(UnderlyingElement(
-            ImagesRepresentative(kermon.monhom,
-             ImagesRepresentative(iso,img^-1))),kermon.freegens,mtail) ]);
-      fi;
-    od;
-  od;
-
-  # tails
-  for i in [1..Length(fam!.tails)] do
-    Add(rels,MappedWord(pres.relators[i],GeneratorsOfGroup(pres.group),head)
-      *MappedWord(ImagesRepresentative(iso,fam!.tails[i]),
-        GeneratorsOfGroup(kfp),tail));
-  od;
-
-  if domon<>false then
     for i in [1..Length(fam!.tzrules.monrules)] do
       nr:=List(fam!.tzrules.monrules[i],
              x->MappedWord(x,fam!.tzrules.freegens,mhead));
@@ -2031,25 +1988,59 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
           ImagesRepresentative(kermon.monhom,
             ImagesRepresentative(iso,img![2]))),kermon.freegens,mtail);
 
-        #if Length(nr[2])>0 then
-        #  # order 2, a^-1 -> a relation
-#
-#          # gen pos in monoid
-#          img:=Position(fam!.tzrules.freegens,fam!.tzrules.monrules[i][2]);
-#          # generator in free group
-#          img:=pres.group.((img+1)/2);
-#          # element, inverse
-#          img:=HybridGroupElement(fam,img,fam!.normalone)^-1;
-#          nr[2]:=nr[2]*MappedWord(UnderlyingElement(
-#            ImagesRepresentative(kermon.monhom,
-#              ImagesRepresentative(iso,img![2]))),kermon.freegens,mtail);
-#
-#        fi;
       fi;
       addrule(nr);
     od;
   fi;
 
+  if domon<>false then
+    for i in RelationsOfFpMonoid(Range(kermon.monhom)) do
+      addrule(List(i,x->MappedWord(x,kermon.freegens,mtail )));
+    od;
+  fi;
+
+  # action on kernel
+  for i in [1..Length(fam!.auts)] do
+    # will the inverse of i actually live?
+    img:=LetterRepAssocWord(mhead[2*i]);
+    invliv:=ReduceLetterRepWordsRewSys(kb!.tzrules,img)=img;
+
+    for j in [1..Length(pcgs)] do
+      img:=ImagesRepresentative(fam!.auts[i],pcgs[j]);
+      Add(rels,tail[j]^head[i]/MappedWord(ImagesRepresentative(iso,img),
+        GeneratorsOfGroup(kfp),tail));
+      if domon<>false then
+        addrule([mtail[2*j-1]*mhead[2*i-1],
+          mhead[2*i-1]*MappedWord(UnderlyingElement(
+            ImagesRepresentative(kermon.monhom,
+             ImagesRepresentative(iso,img))),kermon.freegens,mtail) ]);
+        addrule([mtail[2*j]*mhead[2*i-1],
+          mhead[2*i-1]*MappedWord(UnderlyingElement(
+            ImagesRepresentative(kermon.monhom,
+             ImagesRepresentative(iso,img^-1))),kermon.freegens,mtail) ]);
+
+        # now map with inverse, unless it gets killed by rules
+        if invliv then
+          img:=PreImagesRepresentative(fam!.auts[i],pcgs[j]);
+          addrule([mtail[2*j-1]*mhead[2*i],
+            mhead[2*i]*MappedWord(UnderlyingElement(
+              ImagesRepresentative(kermon.monhom,
+              ImagesRepresentative(iso,img))),kermon.freegens,mtail) ]);
+          addrule([mtail[2*j]*mhead[2*i],
+            mhead[2*i]*MappedWord(UnderlyingElement(
+              ImagesRepresentative(kermon.monhom,
+              ImagesRepresentative(iso,img^-1))),kermon.freegens,mtail) ]);
+        fi;
+      fi;
+    od;
+  od;
+
+  # tails
+  for i in [1..Length(fam!.tails)] do
+    Add(rels,MappedWord(pres.relators[i],GeneratorsOfGroup(pres.group),head)
+      *MappedWord(ImagesRepresentative(iso,fam!.tails[i]),
+        GeneratorsOfGroup(kfp),tail));
+  od;
 
   f:=f/rels;
   head:=GeneratorsOfGroup(f){[1..Length(fam!.auts)]};
