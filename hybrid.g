@@ -129,7 +129,8 @@ end);
 
 BindGlobal("HybridAutMats",function(fam)
 local g,gf,m,mats,a,pcgs;
-  g:=Source(fam!.auts[1]);
+  #g:=Source(fam!.auts[1]);
+  g:=fam!.normal;
   if Size(g)>1 and IsElementaryAbelian(g) then
     if IsPcGroup(g) then
       pcgs:=CanonicalPcgs(InducedPcgsWrtFamilyPcgs(g));
@@ -415,10 +416,10 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
-  HybridAutMats(fam);
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(pcgp);
   fam!.normal:=pcgp;
+  HybridAutMats(fam);
   type:=NewType(fam,IsHybridGroupElementDefaultRep);
   fam!.defaultType:=type;
   SetOne(fam,HybridGroupElement(fam,fam!.factorone,fam!.normalone));
@@ -614,8 +615,10 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     else
       b:=One(newpcgs);
     fi;
-    b:=b*LinearCombinationPcgs(newpcgs{[Length(fpcgs)+1..Length(pfgens)]},
-             ExponentsOfPcElement(npcgs,a![2]));
+    if not IsOne(a![2]) then
+      b:=b*LinearCombinationPcgs(newpcgs{[Length(fpcgs)+1..Length(pfgens)]},
+              ExponentsOfPcElement(npcgs,a![2]));
+    fi;
     #Print(a,"->",b,"\n");
     return b;
   end;
@@ -630,6 +633,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     Add(auts,GroupHomomorphismByImagesNC(newpc,newpc,newpcgs,aut));
   od;
 
+  nfam!.normal:=newpc;
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
   if fail in nfam!.autsinv then Error("automorphisms are not");fi;
@@ -890,10 +894,10 @@ local ogens,n,fam,type,gens,i;
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
-  HybridAutMats(fam);
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(ker);
   fam!.normal:=ker;
+  HybridAutMats(fam);
   type:=NewType(fam,IsHybridGroupElementDefaultRep);
   fam!.defaultType:=type;
   SetOne(fam,HybridGroupElement(fam,fam!.factorone,fam!.normalone));
@@ -1178,9 +1182,9 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
 
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
-  HybridAutMats(nfam);
   nfam!.normalone:=fam!.normalone;
   nfam!.normal:=ker;
+  HybridAutMats(nfam);
   nfam!.defaultType:=NewType(nfam,IsHybridGroupElementDefaultRep);
   SetOne(nfam,HybridGroupElement(nfam,nfam!.factorone,nfam!.normalone));
   gens:=[];
@@ -1219,7 +1223,7 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   fam:=FamilyObj(One(G));
   fs:=HybridBits(G);
 
-  N:=Group(List(N,x->x![2]));
+  N:=Group(List(N,x->x![2]),One(G)![2]);
   nat:=NaturalHomomorphismByNormalSubgroupNC(fs[2],N);
   ker:=Image(nat);
   pcgs:=Pcgs(ker);
@@ -1242,9 +1246,9 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
 
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
-  HybridAutMats(nfam);
   nfam!.normalone:=One(Range(nat));
   nfam!.normal:=Image(nat);
+  HybridAutMats(nfam);
   type:=NewType(nfam,IsHybridGroupElementDefaultRep);
   nfam!.defaultType:=type;
   SetOne(nfam,HybridGroupElement(nfam,nfam!.factorone,nfam!.normalone));
@@ -1320,9 +1324,9 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
   nfam!.factorone:=fg!.factorone;
   nfam!.auts:=auts;
   nfam!.autsinv:=List(auts,Inverse);
-  HybridAutMats(nfam);
   nfam!.normalone:=One(d);
   nfam!.normal:=d;
+  HybridAutMats(nfam);
   type:=NewType(nfam,IsHybridGroupElementDefaultRep);
   nfam!.defaultType:=type;
   SetOne(nfam,HybridGroupElement(nfam,nfam!.factorone,nfam!.normalone));
@@ -1392,7 +1396,9 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     toppers:=List(a,x->x[1]);
     topi:=List(a,x->x[2]);
 
-    if not IsPermGroup(fam!.factgrp) then Error("eords");fi;
+    if not (IsPermGroup(fam!.factgrp) or IsPcGroup(fam!.factgrp)) then
+      Error("eords");
+    fi;
 
     # # need to go through words to ensure same image
     # map:=DoReverseWords(fam!.presentation,fam!.factgrp);
@@ -2448,8 +2454,8 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     for i in irr[2] do
       ext:=GroupHomomorphismByImagesNC(a,Group(i.generators),irr[1],
         i.generators);
-      Add(b,GModuleByMats(GeneratorsOfGroup(a),x->ImagesRepresentative(ext,x)),
-        i.field);
+      Add(b,GModuleByMats(List(GeneratorsOfGroup(a),x->ImagesRepresentative(ext,x)),
+        i.field));
     od;
     irr:=[GeneratorsOfGroup(a),b];
   fi;
@@ -2472,7 +2478,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
       GeneratorsOfGroup(cov)));
 
     # now form normal closure
-    kerpc:=Group(List(ker,x->x![2]));
+    kerpc:=Group(List(ker,x->x![2]),One(cov)![2]);
     for j in ker do
       for g in GeneratorsOfGroup(cov) do
         img:=j^g;
