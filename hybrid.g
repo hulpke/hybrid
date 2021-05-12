@@ -1070,30 +1070,39 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor;
     GeneratorsOfGroup(fam!.presentation.group),
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
-    
-  # evaluate relators
 
-  #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-  #img:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
-  #  GeneratorsOfGroup(G)));
-  toppers:=HybridToppers(G);
+  if Size(factor)=Size(fam!.factgrp) then
 
-  #map:=GroupGeneralMappingByImages(factor,G,
-  # top,GeneratorsOfGroup(G){sel});
-  #img:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-  if List(toppers,x->x![1])<>GeneratorsOfGroup(fam!.presentation.group) then
-    Error("gens wrong!");
-  fi;
-  ker:=List(fam!.presentation.relators,x->MappedWord(x,
-    GeneratorsOfGroup(fam!.presentation.group),toppers));
-  ker:=Set(Filtered(ker,x->not IsOne(x)));
+    # evaluate relators
 
-  if Length(toppers)>0 then
-    # strip generators of group with toppers
-    ker:=Concatenation(ker,
-      List(GeneratorsOfGroup(G),
-          x->x/MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
-            toppers)));
+    #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
+    #img:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
+    #  GeneratorsOfGroup(G)));
+    toppers:=HybridToppers(G);
+
+    #map:=GroupGeneralMappingByImages(factor,G,
+    # top,GeneratorsOfGroup(G){sel});
+    #img:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
+    if List(toppers,x->x![1])<>GeneratorsOfGroup(fam!.presentation.group) then
+      Error("gens wrong!");
+    fi;
+    ker:=List(fam!.presentation.relators,x->MappedWord(x,
+      GeneratorsOfGroup(fam!.presentation.group),toppers));
+    ker:=Set(Filtered(ker,x->not IsOne(x)));
+
+    if Length(toppers)>0 then
+      # strip generators of group with toppers
+      ker:=Concatenation(ker,
+        List(GeneratorsOfGroup(G),
+            x->x/MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
+              toppers)));
+    fi;
+
+  elif Size(factor)=1 then
+    # special case -- in kernel
+    ker:=GeneratorsOfGroup(G);
+  else
+    Error("Proper subgroup, not yet done");
   fi;
 
   #ker:=CoKernelGensPermHom(map);
