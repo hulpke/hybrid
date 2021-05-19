@@ -1036,32 +1036,35 @@ local gens,g,ep,img;
   return pres.reversewords;
 end;
 
-HybridToppers:=function(G)
-local map,fam,pres,gens,gp;
-  fam:=FamilyObj(One(G));
-  if not IsBound(G!.toppers) then
-    #pres:=fam!.presentation;
-    #gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
-    #        GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
-    gens:=List(GeneratorsOfGroup(G),x->PreImagesRepresentative(fam!.fphom,
-        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-
-    if Size(fam!.factgrp)>10^6 or not IsPermGroup(fam!.factgrp) then
-      map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
-      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-    else
-      gp:=Group(gens,One(fam!.factgrp));
-      map:=EpimorphismFromFreeGroup(gp);
-      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),
-        x->MappedWord(Factorization(gp,x),
-          MappingGeneratorsImages(map)[1],GeneratorsOfGroup(G)));
-    fi;
-  fi;
-  return G!.toppers;
-end;
+#HybridToppers:=function(G)
+#local map,fam,pres,gens,gp;
+#  fam:=FamilyObj(One(G));
+#  if not IsBound(G!.toppers) then
+#    #pres:=fam!.presentation;
+#    #gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
+#    #        GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
+#    gens:=List(GeneratorsOfGroup(G),x->PreImagesRepresentative(fam!.fphom,
+#        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
+#
+#    if Size(fam!.factgrp)>10^6 or not IsPermGroup(fam!.factgrp) then
+#      map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
+#      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
+#    else
+#      gp:=Group(gens,One(fam!.factgrp));
+#      map:=EpimorphismFromFreeGroup(gp);
+#      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),
+#        x->MappedWord(Factorization(gp,x),
+#          MappingGeneratorsImages(map)[1],GeneratorsOfGroup(G)));
+#    fi;
+#  fi;
+#  return G!.toppers;
+#end;
 
 HybridBits:=function(G)
-local fam,top,toppers,sel,map,ker,sub,i,j,img,factor;
+local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp;
+  if IsBound(G!.hybridbits) then
+    return G!.hybridbits;
+  fi;
   fam:=FamilyObj(One(G));
   # first get the factor
   top:=List(GeneratorsOfGroup(G),x->x![1]);
@@ -1071,43 +1074,71 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor;
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
 
-  if Size(factor)=Size(fam!.factgrp) then
-
-    # evaluate relators
-
-    #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-    #img:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
-    #  GeneratorsOfGroup(G)));
-    toppers:=HybridToppers(G);
-
-    #map:=GroupGeneralMappingByImages(factor,G,
-    # top,GeneratorsOfGroup(G){sel});
-    #img:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-    if List(toppers,x->x![1])<>GeneratorsOfGroup(fam!.presentation.group) then
-      Error("gens wrong!");
-    fi;
-    ker:=List(fam!.presentation.relators,x->MappedWord(x,
-      GeneratorsOfGroup(fam!.presentation.group),toppers));
-    ker:=Set(Filtered(ker,x->not IsOne(x)));
-
-    if Length(toppers)>0 then
-      # strip generators of group with toppers
-      ker:=Concatenation(ker,
-        List(GeneratorsOfGroup(G),
-            x->x/MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
-              toppers)));
-    fi;
-
-  elif Size(factor)=1 then
-    # special case -- in kernel
-    ker:=GeneratorsOfGroup(G);
+  # take presentation
+  if Size(factor)=Size(Source(fam!.fphom)) then
+    iso:=fam!.fphom;
   else
-    Error("Proper subgroup, not yet done");
+    iso:=IsomorphismFpGroup(factor);
   fi;
 
-  #ker:=CoKernelGensPermHom(map);
+  # calculate elements corresponding to fp generators
+  fp:=Range(iso);
+  map:=GroupGeneralMappingByImages(factor,G,top,GeneratorsOfGroup(G){sel});
+  map:=List(GeneratorsOfGroup(fp),
+    x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
 
-  ker:=Concatenation(ker,Filtered(GeneratorsOfGroup(G),x->IsOne(x![1])));
+  # evaluate relators
+  ker:=List(RelatorsOfFpGroup(fp),
+                     x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map));
+
+#  if Size(factor)=Size(fam!.factgrp) then
+#
+#    # evaluate relators
+#
+#    #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
+#    #img:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
+#    #  GeneratorsOfGroup(G)));
+#    toppers:=HybridToppers(G);
+#
+#    #map:=GroupGeneralMappingByImages(factor,G,
+#    # top,GeneratorsOfGroup(G){sel});
+#    #img:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
+#    if List(toppers,x->x![1])<>GeneratorsOfGroup(fam!.presentation.group) then
+#      Error("gens wrong!");
+#    fi;
+#    ker:=List(fam!.presentation.relators,x->MappedWord(x,
+#      GeneratorsOfGroup(fam!.presentation.group),toppers));
+#    ker:=Set(Filtered(ker,x->not IsOne(x)));
+#
+#    if Length(toppers)>0 then
+#      # strip generators of group with toppers
+#      ker:=Concatenation(ker,
+#        List(GeneratorsOfGroup(G),
+#            x->x/MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
+#              toppers)));
+#    fi;
+#
+#  elif Size(factor)=1 then
+#    # special case -- in kernel
+#    ker:=GeneratorsOfGroup(G);
+#  else
+#    map:=GroupGeneralMappingByImages(factor,G,top,GeneratorsOfGroup(G){sel});
+#    ker:=Filtered(CoKernelGensPermHom(map),x->not IsOne(x));
+#  fi;
+
+  # strip generators of group with representatives word.
+  j:=List(GeneratorsOfGroup(G){sel},x->x/MappedWord(UnderlyingElement(
+    ImagesRepresentative(iso,MappedWord(x![1],
+      GeneratorsOfGroup(fam!.presentation.group),
+      GeneratorsOfGroup(fam!.factgrp)))),
+    FreeGeneratorsOfFpGroup(fp),map));
+  
+  ker:=Concatenation(ker,j);
+
+  # generators in kernel
+  ker:=Concatenation(ker,GeneratorsOfGroup(G){
+    Difference([1..Length(GeneratorsOfGroup(G))],sel)});
+
   ker:=List(ker,x->x![2]); # relator images
   sub:=Group(ker,fam!.normalone);
 
@@ -1122,7 +1153,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor;
     od;
   od;
   sub:=Group(InducedPcgsWrtFamilyPcgs(sub),fam!.normalone);
-  return [factor,sub];
+  G!.hybridbits:=[factor,sub,map,iso];
+  return G!.hybridbits;
 end;
 
 OwnHybrid:=function(G)
@@ -1140,33 +1172,14 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
 
   # new representatives in G for factor
   #top:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-  top:=HybridToppers(G);
+  #top:=HybridToppers(G);
+  top:=fs[3];
+  if fs[4]<>fam!.fphom then Error("different pres");fi;
 
   # compute tails wrt to top
   tails:=List(fam!.presentation.relators,x->Inverse(MappedWord(x,
     GeneratorsOfGroup(fam!.presentation.group),
     top)![2]));
-
-#DELETE:
-# # the kernel is generated by tails, generators with trivial top and then
-#   # closure, *not the ker of the Hybrid bits, as we rebase!*
-#   ker:=Group(tails);
-#   ker:=ClosureGroup(ker,List(Filtered(GeneratorsOfGroup(G),x->IsOne(x![1])),
-#     x->x![2]));
-# 
-#   # normal closure
-#   gens:=ShallowCopy(GeneratorsOfGroup(ker));
-#   for i in gens do
-#     for j in GeneratorsOfGroup(G) do
-#       new:=HybridGroupElement(fam,fam!.factorone,i)^j;
-#       new:=new![2];
-#       if not new in ker then
-#         ker:=ClosureGroup(ker,new);
-#         Add(gens,new);
-#       fi;
-#     od;
-#   od;
-#   if Size(ker)<>Size(fs[2]) then Error("kernel confusion");fi;
 
   ker:=fs[2];
   # Canonical cleans out cruft
@@ -1588,7 +1601,7 @@ end);
 InstallMethod(Size,"hybrid groups",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(G)
-  return Product(List(HybridBits(G),Size));
+  return Product(List(HybridBits(G){[1,2]},Size));
 end);
 
 WreathModuleCoverHybrid:=function(G,module)
@@ -2480,7 +2493,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
   for i in irr do
     Print("Irreducible Module ",Position(irr,i),", dim=",i.dimension,"\n");
     cov:=WreathModuleCoverHybrid(a,i);
-    SetSize(cov,Product(HybridBits(cov),Size));
+    SetSize(cov,Product(HybridBits(cov){[1,2]},Size));
     b:=FamilyObj(One(cov));
 
     ker:=List(RelatorsOfFpGroup(G),x->MappedWord(x,FreeGeneratorsOfFpGroup(G),
@@ -2521,7 +2534,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
   od;
 
   b:=HybridBits(cov);
-  SetSize(cov,Product(HybridBits(cov),Size));
+  SetSize(cov,Product(HybridBits(cov){[1,2]},Size));
   fam:=FamilyObj(One(cov));
   if IsBound(fam!.quickermult) and fam!.quickermult<>fail then
     b:=Group(List(GeneratorsOfGroup(cov),fam!.quickermult));
