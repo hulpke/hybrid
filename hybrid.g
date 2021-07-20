@@ -419,6 +419,7 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(pcgp);
   fam!.normal:=pcgp;
+  fam!.wholeSize:=Size(fam!.factgrp)*Size(fam!.normal);
   HybridAutMats(fam);
   type:=NewType(fam,IsHybridGroupElementDefaultRep);
   fam!.defaultType:=type;
@@ -450,6 +451,7 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   gens:=Group(gens);
   #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
 
+  fam!.wholeGroup:=gens;
   return gens;
 
 end;
@@ -718,6 +720,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     nfam!.factgrp:=nff;
 
   fi;
+  nfam!.wholeSize:=Size(nfam!.factgrp)*Size(nfam!.normal);
   nfam!.factorone:=One(pres.group);
   SetOne(nfam,HybridGroupElement(nfam,nfam!.factorone,nfam!.normalone));
 
@@ -897,6 +900,7 @@ local ogens,n,fam,type,gens,i;
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(ker);
   fam!.normal:=ker;
+  fam!.wholeSize:=Size(fam!.factgrp)*Size(fam!.normal);
   HybridAutMats(fam);
   type:=NewType(fam,IsHybridGroupElementDefaultRep);
   fam!.defaultType:=type;
@@ -917,6 +921,7 @@ local ogens,n,fam,type,gens,i;
   gens:=Group(gens);
   #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
 
+  fam!.wholeGroup:=gens;
   return gens;
 
 end;
@@ -1060,12 +1065,231 @@ end;
 #  return G!.toppers;
 #end;
 
+# this maybe should go into the library
+InstallMethod( InducedPcgsByGeneratorsWithImages, "words images",true,
+    [ IsPcgs and IsPrimeOrdersPcgs, IsCollection, 
+      IsCollection and IsAssocWordCollection ], 0,
+function( pcgs, gens, imgs )
+    local  ro, max, id, igs, chain, new, seen, old, u, uw, up, e, x, c, 
+           cw, d, i, j, f,nonab;
+
+    # do family check here to avoid problems with the empty list
+    if not IsIdenticalObj( FamilyObj(pcgs), FamilyObj(gens) )  then
+        Error( "<pcgs> and <gens> have different families" );
+    fi;
+    if Length( gens ) <> Length( imgs ) then
+        Error( "<gens> and <imgs> must have equal length");
+    fi;
+
+    # get the trivial case first
+    if gens = AsList( pcgs ) then return [pcgs, imgs]; fi;
+
+    #catch special case: abelian
+    nonab:=not IsAbelian(Group(pcgs,OneOfPcgs(pcgs)));
+
+    # get relative orders and composition length
+    ro  := RelativeOrders(pcgs);
+    max := Length(pcgs);
+
+    # get the identity
+    id := [gens[1]^0, imgs[1]^0];
+
+    # the induced generating sequence will be collected into <igs>
+    igs := List( [ 1 .. max ], x -> id );
+
+    # <chain> gives a chain of trailing weights
+    chain := max+1;
+
+    # <new> contains a list of generators and images
+    new := List( [1..Length(gens)], i -> [gens[i], imgs[i]]);
+    f   := function( x, y ) return DepthOfPcElement( pcgs, x[1] )
+                                   < DepthOfPcElement( pcgs, y[1] ); end;
+    Sort( new, f );
+
+    # <seen> holds a list of words already seen
+    seen := Union( Set( gens ), [id[1]] );
+
+    # start putting <new> into <igs>
+    while 0 < Length(new)  do
+        old := Reversed( new );
+        new := [];
+        for u in old do
+            uw := DepthOfPcElement( pcgs, u[1] );
+
+            # if <uw> has reached <chain>, we can ignore <u>
+            if uw < chain  then
+                up := [];
+                repeat
+                    if igs[uw][1] <> id[1]  then
+                        if chain <= uw+1  then
+                            u := id;
+                        else
+                          # is the element a shorter word?
+                          if Length(igs[uw][2])>Length(u[2]) then
+                            # swap
+                            x:=u;
+                            u:=igs[uw];
+                            igs[uw]:=x;
+                          fi;
+                            e := LeadingExponentOfPcElement(pcgs,u[1])
+                                / LeadingExponentOfPcElement(pcgs,igs[uw][1])
+                                mod ro[uw];
+                            u[1] := u[1] / igs[uw][1] ^ e;
+                            u[2] := u[2] / igs[uw][2] ^ e;
+                        fi;
+                    else
+                        AddSet( seen, u[1] );
+                        Add( up, ShallowCopy( u ) );
+                        if chain <= uw+1  then
+                            u := id;
+                        else
+                            u[1] := u[1] ^ ro[uw];
+                            u[2] := u[2] ^ ro[uw];
+                        fi;
+                    fi;
+                    if u[1] <> id[1]  then
+                        uw := DepthOfPcElement( pcgs, u[1] );
+                    fi;
+                until u[1] = id[1] or chain <= uw;
+
+                # add the commutators with the powers of <u>
+                for u in up do
+                    for x in igs do
+                        if nonab and x[1] <> id[1] 
+                           and ( DepthOfPcElement(pcgs,x[1]) + 1 < chain
+                              or DepthOfPcElement(pcgs,u[1]) + 1 < chain )
+                        then
+                            c := Comm( u[1], x[1] );
+                            if not c in seen  then
+                                cw := DepthOfPcElement( pcgs, c );
+                                AddSet( new, [c, Comm( u[2], x[2] )] );
+                                AddSet( seen, c );
+                            fi;
+                        fi;
+                    od;
+                od;
+
+                # enter the generators <up> into <igs>
+                for u in up do
+                    d := DepthOfPcElement( pcgs, u[1] );
+                    igs[d] := u;
+                od;
+
+                # update the chain
+                while 1 < chain and igs[chain-1][1] <> id[1] do
+                    chain := chain-1;
+                od;
+
+                if nonab then
+                  for i  in [ chain .. max ]  do
+                    for j  in [ 1 .. chain-1 ]  do
+                        c := Comm( igs[i][1], igs[j][1] );
+                        if not c in seen  then
+                            AddSet( seen, c );
+                            AddSet( new, [c, Comm( igs[i][2], igs[j][2] )] );
+                        fi;
+                    od;
+                  od;
+                fi;
+#            else
+#              Print("Ignore ",u," ",List(igs,x->Length(x[2])),"\n");
+            fi;
+        od;
+    od;
+
+    # now return
+    igs := Filtered( igs, x -> x <> id );
+    igs := [List( igs, x -> x[1] ), List( igs, x -> x[2] )];
+    igs[1] := InducedPcgsByPcSequenceNC( pcgs, igs[1] );
+    return igs;
+end);
+
+# form short words in an attempt to find short relators
+ShortKerWords:=function(fam,gens,free,lim)
+local w,e,es,i,j,a,b,ee,p,ker,kerw;
+  e:=ShallowCopy(gens);
+  # inverses?
+  gens:=ShallowCopy(gens);
+  free:=ShallowCopy(free);
+  for i in [1..Length(e)] do
+    if not e[i]^-1 in gens then
+      Add(gens,gens[i]^-1);
+      Add(free,free[i]^-1);
+    fi;
+  od;
+  e:=ShallowCopy(gens);
+  es:=Set(e);
+  ee:=List(e,x->MappedWord(x![1],
+    GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp)));
+  w:=ShallowCopy(free);
+  ker:=[];
+  kerw:=[];
+  i:=0;
+  while Length(e)<lim do
+    i:=i+1;
+    for j in [1..Length(gens)] do
+      a:=e[i]*gens[j];
+      if not (a in es or IsOne(a)) then
+        Add(e,a);
+        AddSet(es,a);
+        Add(w,w[i]*free[j]);
+        b:=MappedWord(a![1],
+          GeneratorsOfGroup(fam!.presentation.group),
+          GeneratorsOfGroup(fam!.factgrp));
+        if IsOne(b) then
+          Add(ker,a);
+          Add(kerw,w[Length(w)]);
+        else
+          p:=Position(ee,b);
+          if p<>fail then
+            Add(ker,a/e[p]);
+            Add(kerw,w[Length(w)]/w[p]);
+          else
+            p:=Position(ee,b^-1);
+            if p<>fail then
+              Add(ker,a*e[p]);
+              Add(kerw,w[Length(w)]*w[p]);
+            fi;
+          fi;
+        fi;
+        Add(ee,b);
+      fi;
+    od;
+  od;
+  # pick shortest for duplicates
+  a:=Sortex(List(kerw,Length));
+  ker:=Permuted(ker,a);
+  kerw:=Permuted(kerw,a);
+  e:=[];
+  es:=[One(gens[1])];
+  w:=[];
+  for i in [1..Length(ker)] do
+    if not ker[i] in es then
+      Add(e,ker[i]);
+      AddSet(es,ker[i]);
+      Add(w,kerw[i]);
+    fi;
+  od;
+
+  return [e,w];
+end;
+
 HybridBits:=function(G)
-local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp;
-  if IsBound(G!.hybridbits) then
+local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
+  xker,xkerw,addker,dowords,ffam,of;
+
+  dowords:=ValueOption("dowords")<>false; # default to true
+  if IsBound(G!.hybridbits) and (dowords=false or
+    IsBound(G!.hybridbits.wordskerpcgs)) then
     return G!.hybridbits;
   fi;
   fam:=FamilyObj(One(G));
+  # TODO: Re-use these free groups
+  gf:=FreeGroup(Length(GeneratorsOfGroup(G))); # for word expressions
+  gfg:=GeneratorsOfGroup(gf);
+  #gfg:=StraightLineProgGens(gfg);
+
   # first get the factor
   top:=List(GeneratorsOfGroup(G),x->x![1]);
   sel:=Filtered([1..Length(top)],x->not IsOne(top[x]));
@@ -1074,94 +1298,157 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp;
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
 
-  # take presentation
+  # calculate elements corresponding to fp generators
+
+  ker:=[];
+  kerw:=[];
+  xker:=[];
+  xkerw:=[];
+  sub:=TrivialSubgroup(fam!.normal);
+  ffam:=FamilyObj(One(factor));
+
+  # take factor and its presentation
   if Size(factor)=Size(Source(fam!.fphom)) then
     iso:=fam!.fphom;
   else
     iso:=IsomorphismFpGroup(factor);
   fi;
-
-  # calculate elements corresponding to fp generators
   fp:=Range(iso);
-  map:=GroupGeneralMappingByImages(factor,G,top,GeneratorsOfGroup(G){sel});
-  map:=List(GeneratorsOfGroup(fp),
-    x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
 
-  # evaluate relators
-  ker:=List(RelatorsOfFpGroup(fp),
-                     x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map));
+  if dowords then
+    addker:=function(w)
+    local img,i,part;
+      img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
+      if not img![2] in sub then
+        Add(ker,img);
+        Add(kerw,w);
+        sub:=ClosureGroup(sub,img![2]);
+      elif not (IsOne(img![2]) or ForAll(kerw,i->Length(i)<Length(w))) then
+        Add(xker,img);
+        Add(xkerw,w);
+      fi;
+    end;
 
-#  if Size(factor)=Size(fam!.factgrp) then
-#
-#    # evaluate relators
-#
-#    #map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-#    #img:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),
-#    #  GeneratorsOfGroup(G)));
-#    toppers:=HybridToppers(G);
-#
-#    #map:=GroupGeneralMappingByImages(factor,G,
-#    # top,GeneratorsOfGroup(G){sel});
-#    #img:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-#    if List(toppers,x->x![1])<>GeneratorsOfGroup(fam!.presentation.group) then
-#      Error("gens wrong!");
-#    fi;
-#    ker:=List(fam!.presentation.relators,x->MappedWord(x,
-#      GeneratorsOfGroup(fam!.presentation.group),toppers));
-#    ker:=Set(Filtered(ker,x->not IsOne(x)));
-#
-#    if Length(toppers)>0 then
-#      # strip generators of group with toppers
-#      ker:=Concatenation(ker,
-#        List(GeneratorsOfGroup(G),
-#            x->x/MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
-#              toppers)));
-#    fi;
-#
-#  elif Size(factor)=1 then
-#    # special case -- in kernel
-#    ker:=GeneratorsOfGroup(G);
-#  else
-#    map:=GroupGeneralMappingByImages(factor,G,top,GeneratorsOfGroup(G){sel});
-#    ker:=Filtered(CoKernelGensPermHom(map),x->not IsOne(x));
-#  fi;
+  else
+    kerw:=ker;
+    gf:=G;
+    gfg:=GeneratorsOfGroup(G);
+    addker:=function(w)
+      if not w![2] in sub then
+        Add(ker,w);
+        sub:=ClosureGroup(sub,w![2]);
+      fi;
+    end;
 
-  # strip generators of group with representatives word.
-  j:=List(GeneratorsOfGroup(G){sel},x->x/MappedWord(UnderlyingElement(
-    ImagesRepresentative(iso,MappedWord(x![1],
-      GeneratorsOfGroup(fam!.presentation.group),
-      GeneratorsOfGroup(fam!.factgrp)))),
-    FreeGeneratorsOfFpGroup(fp),map));
-  
-  ker:=Concatenation(ker,j);
+  fi;
+
+  map:=GroupGeneralMappingByImages(factor,gf,top,gfg{sel});
+  if dowords=false 
+      and IsHybridGroup(factor) and Size(factor)=ffam!.wholeSize then
+    of:=G!.originalFactor;
+    map:=GroupGeneralMappingByImages(of,gf,top,gfg{sel});
+    map:=List(GeneratorsOfGroup(fp),
+      x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
+  else
+    map:=GroupGeneralMappingByImages(factor,gf,top,gfg{sel});
+    map:=List(GeneratorsOfGroup(fp),
+      x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
+  fi;
 
   # generators in kernel
-  ker:=Concatenation(ker,GeneratorsOfGroup(G){
-    Difference([1..Length(GeneratorsOfGroup(G))],sel)});
+  for i in Difference([1..Length(GeneratorsOfGroup(G))],sel) do
+    addker(gfg[i]);
+  od;
 
-  ker:=List(ker,x->x![2]); # relator images
-  sub:=Group(ker,fam!.normalone);
+  # strip generators of group with representatives word and use powers.
+  for i in [1..Length(sel)] do
+    j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
+      ImagesRepresentative(iso,top[i])),
+      FreeGeneratorsOfFpGroup(fp),map);
+    addker(j);
+    addker(gfg[sel[i]]^Order(top[i]));
+  od;
+
+  if dowords and IsPermGroup(factor) or IsPcGroup(factor) then
+
+    # short words
+    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},1000);
+    for i in j[2] do
+      addker(i);
+    od;
+
+    # presentation
+    j:=IsomorphismFpGroupByGenerators(factor,top);
+    j:=Range(j);
+    for i in RelatorsOfFpGroup(j) do
+      i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
+      addker(i);
+    od;
+  fi;
+
+  if dowords and IsBound(G!.originalFactor) then
+    of:=HybridBits(G!.originalFactor);
+    for i in of.wordskerpcgs do
+      addker(MappedWord(i,of.freegens,gfg));
+    od;
+  fi;
+
+  # evaluate relators
+  for i in List(RelatorsOfFpGroup(fp),
+                     x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
+    addker(i);
+  od;
 
   # now form normal closure
-  for i in ker do
-    for j in GeneratorsOfGroup(G) do
-      img:=(HybridGroupElement(fam,fam!.factorone,i)^j)![2];
-      if not img in sub then
-        Add(ker,img);
-        sub:=ClosureGroup(sub,img);
-      fi;
+  i:=1;
+  while i<=Length(ker) do
+    for j in gfg do
+      addker(kerw[i]^j);
     od;
+    i:=i+1;
   od;
-  sub:=Group(InducedPcgsWrtFamilyPcgs(sub),fam!.normalone);
-  G!.hybridbits:=[factor,sub,map,iso];
-  return G!.hybridbits;
+
+  if dowords then
+    ker:=Concatenation(ker,xker);
+    kerw:=Concatenation(kerw,xkerw);
+    # have short ones last (this works best with InducedPcgs...)
+    j:=Sortex(-List(kerw,Length));
+    ker:=Permuted(ker,j);
+    kerw:=Permuted(kerw,j);
+
+    # canonize
+    i:=InducedPcgsByGeneratorsWithImages(FamilyPcgs(sub),
+      List(ker,x->x![2]),kerw);
+    #Error("nuno");
+    
+    Print(List(kerw,Length)," vs ",List(i[2],Length),"\n");
+  else
+    i:=[CanonicalPcgsWrtFamilyPcgs(sub)];
+  fi;
+
+  sub:=Group(i[1],fam!.normalone);
+  j:=rec(factor:=factor,
+          ker:=sub,
+          factoriso:=iso);
+  if dowords then
+    j.freegens:=gfg;
+    j.wordsfreps:=map;
+    j.freps:=List(map,
+      x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
+    j.kerpcgs:=i[1];
+    j.wordskerpcgs:=i[2];
+  else
+    j.freps:=map;
+  fi;
+  G!.hybridbits:=j;
+  return j;
 end;
 
 OwnHybrid:=function(G)
 local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
   fam:=FamilyObj(One(G));
   fs:=HybridBits(G);
-  if Size(fs[1])<Size(fam!.factgrp) then
+  if Size(fs.factor)<Size(fam!.factgrp) then
     Error("smaller factor");
   fi;
   #top:=Filtered(GeneratorsOfGroup(G),x->not IsOne(x![1]));
@@ -1173,15 +1460,15 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
   # new representatives in G for factor
   #top:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
   #top:=HybridToppers(G);
-  top:=fs[3];
-  if fs[4]<>fam!.fphom then Error("different pres");fi;
+  top:=fs.freps;
+  if fs.factoriso<>fam!.fphom then Error("different pres");fi;
 
   # compute tails wrt to top
   tails:=List(fam!.presentation.relators,x->Inverse(MappedWord(x,
     GeneratorsOfGroup(fam!.presentation.group),
     top)![2]));
 
-  ker:=fs[2];
+  ker:=fs.ker;
   # Canonical cleans out cruft
   pcgs:=CanonicalPcgs(Pcgs(ker));
   ker:=SubgroupNC(Parent(ker),pcgs);
@@ -1206,6 +1493,7 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
   nfam!.autsinv:=List(auts,Inverse);
   nfam!.normalone:=fam!.normalone;
   nfam!.normal:=ker;
+  nfam!.wholeSize:=Size(nfam!.factgrp)*Size(nfam!.normal);
   HybridAutMats(nfam);
   nfam!.defaultType:=NewType(nfam,IsHybridGroupElementDefaultRep);
   SetOne(nfam,HybridGroupElement(nfam,nfam!.factorone,nfam!.normalone));
@@ -1235,7 +1523,9 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
 
   ShadowHybrid(nfam);
 
-  return Group(newgens);
+  new:= Group(newgens);
+  nfam!.wholeGroup:=new;
+  return new;
 
 end;
 
@@ -1246,7 +1536,7 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   fs:=HybridBits(G);
 
   N:=Group(List(N,x->x![2]),One(G)![2]);
-  nat:=NaturalHomomorphismByNormalSubgroupNC(fs[2],N);
+  nat:=NaturalHomomorphismByNormalSubgroupNC(fs.ker,N);
   ker:=Image(nat);
   pcgs:=Pcgs(ker);
 
@@ -1270,6 +1560,7 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   nfam!.autsinv:=List(auts,Inverse);
   nfam!.normalone:=One(Range(nat));
   nfam!.normal:=Image(nat);
+  nfam!.wholeSize:=Size(nfam!.factgrp)*Size(nfam!.normal);
   HybridAutMats(nfam);
   type:=NewType(nfam,IsHybridGroupElementDefaultRep);
   nfam!.defaultType:=type;
@@ -1282,6 +1573,7 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   od;
 
   new:=Group(gens);
+  nfam!.wholeGroup:=new;
   return new;
 end;
 
@@ -1317,14 +1609,14 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
 
   if fg!.presentation<>fhp or fg!.factgrp<>fh!.factgrp
     or head<>List(GeneratorsOfGroup(H),x->translate(x![1]))
-    or Size(hg[1])<Size(fg!.factgrp) or Size(hh[1])<Size(fh!.factgrp) then
+    or Size(hg.factor)<Size(fg!.factgrp) or Size(hh.factor)<Size(fh!.factgrp) then
     Error("does not fit");
   fi;
-  d:=DirectProduct(hg[2],hh[2]);
+  d:=DirectProduct(hg.ker,hh.ker);
   e1:=Embedding(d,1);
   e2:=Embedding(d,2);
-  gen1:=Pcgs(hg[2]);
-  gen2:=Pcgs(hh[2]);
+  gen1:=Pcgs(hg.ker);
+  gen2:=Pcgs(hh.ker);
   gens:=Concatenation(List(gen1,x->ImagesRepresentative(e1,x)),
                       List(gen2,x->ImagesRepresentative(e2,x)));
   auts:=[];
@@ -1348,6 +1640,7 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
   nfam!.autsinv:=List(auts,Inverse);
   nfam!.normalone:=One(d);
   nfam!.normal:=d;
+  nfam!.wholeSize:=Size(nfam!.factgrp)*Size(nfam!.normal);
   HybridAutMats(nfam);
   type:=NewType(nfam,IsHybridGroupElementDefaultRep);
   nfam!.defaultType:=type;
@@ -1380,9 +1673,14 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
   od;
 
   new:=Group(new);
+  nfam!.wholeGroup:=new;
 
+  if IsBound(G!.originalFactor) and IsBound(H!.originalFactor) and
+    G!.originalFactor=H!.originalFactor then
+    new!.originalFactor:=G!.originalFactor;
+  fi;
   i:=HybridBits(new); 
-  if not ForAll(tails,x->x in i[2]) then 
+  if not ForAll(tails,x->x in i.ker) then 
     # tails could lie in d but not in kernel. If so, rebase
 #Error("A1");
     new:=OwnHybrid(new);
@@ -1399,182 +1697,205 @@ InstallMethod(ImagesRepresentative,"hybrid",FamSourceEqFamElm,
 function(hom,elm)
 local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
       pcgs,sortfun,e,ro,i,nn,ao,pres,gens;
+
+#Error("Imgrep");
   mgi:=MappingGeneratorsImages(hom);
-  if not IsBound(hom!.underlyingpchom) then
+  src:=Source(hom);
+  fam:=FamilyObj(One(src));
+
+  # check whether it is on the standard generators of the hybrid group
+  if not IsBound(hom!.onStandardGens) then
+    hb:=[Filtered(mgi[1],x->IsOne(x![2]) and not IsOne(x![1])),
+         Filtered(mgi[1],x->IsOne(x![1]) and not IsOne(x![2]))];
+    hom!.onStandardGens:=false;
+    if Length(hb[1])+Length(hb[2])=Length(mgi[1])
+      and Length(Unique(hb[1]))=Length(hb[1])
+      and Length(Unique(hb[2]))=Length(hb[2]) 
+      and Length(mgi[1])=Length(Pcgs(fam!.normal))+Length(fam!.auts) then
+
+      topi:=List(hb[1],x->Position(mgi[1],x));
+      e:=List(hb[2],x->Position(mgi[1],x));
+      a:=List(hb[2],x->x![2]);
+      map:=GroupHomomorphismByImagesNC(Group(a),Range(hom),a,mgi[2]{e});
+      hom!.onStandardGens:=[List(hb[1],x->x![1]),mgi[2]{topi},map];
+    fi;
+  fi;
+
+  if IsList(hom!.onStandardGens) then
+    a:=MappedWord(elm![1],hom!.onStandardGens[1],hom!.onStandardGens[2])*
+         ImagesRepresentative(hom!.onStandardGens[3],elm![2]);
+    return a;
+  elif not IsBound(hom!.underlyingpchom) then
     # compute good generators
-    src:=Source(hom);
     if GeneratorsOfGroup(src)<>mgi[1] then
       src:=GroupWithGenerators(mgi[1]);
     fi;
-    hb:=HybridBits(src);
-    fam:=FamilyObj(One(src));
-#if Length(mgi[1])<>Length(GeneratorsOfGroup(Source(hom))) then Error("UNUMU"); fi;
-    nn:=List([1..Length(mgi[1])],x->Tuple([mgi[1][x],mgi[2][x]]));
+    hb:=HybridBits(src:dowords:=true);
 
-    gens:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
-        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-    map:=GroupGeneralMappingByImagesNC(fam!.factgrp,Group(nn),gens,nn);
-    a:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-    toppers:=List(a,x->x[1]);
-    topi:=List(a,x->x[2]);
+    pchom:=List(hb.wordskerpcgs,x->MappedWord(x,hb.freegens,mgi[2]));
+    pchom:=GroupGeneralMappingByImagesNC(SubgroupNC(fam!.normal,hb.kerpcgs),
+      Range(hom),hb.kerpcgs,pchom);
 
-    if not (IsPermGroup(fam!.factgrp) or IsPcGroup(fam!.factgrp)) then
-      Error("eords");
-    fi;
+    topho:=[hb.factoriso,GeneratorsOfGroup(Range(hb.factoriso)),hb.freps,
+            List(hb.wordsfreps,x->MappedWord(x,hb.freegens,mgi[2]))];
 
-    # # need to go through words to ensure same image
-    # map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-    # toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[1]));
-    # topi:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[2]));
-    ker:=[];
-
-    for r in Filtered([1..Length(mgi[1])],x->IsOne(mgi[1][x]![1])) do
-      Add(ker,[mgi[1][r],mgi[1][r]![2],mgi[2][r]]);
-    od;
-
-    for r in fam!.presentation.relators do
-      a:=MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),toppers);
-      if not IsOne(a) then
-        Add(ker,[a,a![2],
-                MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),topi)]);
-      fi;
-    od;
-
-    sub:=Group(List(ker,x->x[2]));
-    if Size(sub)<Size(hb[2]) then
-      # clean out generators top with toppers
-      for r in [1..Length(mgi)] do
-        a:=mgi{[1,2]}[r]; # gen and image
-        e:=a[1]![1]; # top word
-        a[1]:=LeftQuotient(
-          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
-            toppers),a[1]);
-        a[2]:=LeftQuotient(
-          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
-            topi),a[2]);
-        if not a[1]![2] in sub then
-          Add(ker,[a[1],a[1]![2],a[2]]);
-          sub:=ClosureGroup(sub,a[1]![2]);
-#          Print("yay\n");
-#        else
-#          Print("nee\n");
-        fi;
-      od;
-    fi;
-
-    pcgs:=FamilyPcgs(hb[2]);
-
-
-    if Size(hb[2])>1 and (IsAssocWord(ker[1][3]) or IsElementOfFpGroup(ker[1][3])) then
-      e:=3*Length(pcgs);
-    else
-      e:=0;
-    fi;
-    while Size(sub)<Size(hb[2]) or e>0 do
-      repeat
-        a:=[Random(ker),Random([1..Length(mgi[1])])];
-        r:=a[1][1]^mgi[1][a[2]];
-      until not r![2] in sub or Size(sub)=Size(hb[2]);
-      Add(ker,[r,r![2],a[1][3]^mgi[2][a[2]]]);
-      sub:=ClosureGroup(sub,r![2]);
-      e:=e-1;
-    od;
-    a:=[[],[]];
-    for r in ker do
-      Add(a[1],r[2]);
-      Add(a[2],r[3]);
-    od;
-
-     ao:=List(a,ShallowCopy);
-
-    if Length(a[2])>0 and (IsAssocWord(a[2][1]) or IsElementOfFpGroup(a[2][1])) then
-      # some pre-cleaning to get shorter word lengths
-      # make pairs
-      a:=List([1..Length(a[1])],x->[a[1][x],a[2][x]]);
-      sortfun:=function(x,y)
-        return DepthOfPcElement(pcgs,x[1])<DepthOfPcElement(pcgs,y[1]) or
-          (DepthOfPcElement(pcgs,x[1])=DepthOfPcElement(pcgs,y[1]) and
-          Length(x[2])<Length(y[2]));
-        end;
-      Sort(a,sortfun);
-      while IsOne(a[Length(a)][1]) do a:=a{[1..Length(a)-1]};od;
-
-      # clean out
-      r:=1;
-      while r<Length(a) do
-        if DepthOfPcElement(pcgs,a[r][1])=DepthOfPcElement(pcgs,a[r+1][1]) then
-          ro:=RelativeOrders(pcgs)[DepthOfPcElement(pcgs,a[r][1])];
-          e:=-LeadingExponentOfPcElement(pcgs,a[r+1][1])
-            /LeadingExponentOfPcElement(pcgs,a[r][1]) mod ro;
-          if 2*e>ro then e:=e-ro;fi;
-          a[r+1]:=[a[r+1][1]*a[r][1]^e,a[r+1][2]*a[r][2]^e];
-          Sort(a,sortfun);
-          while IsOne(a[Length(a)][1]) do a:=a{[1..Length(a)-1]};od;
-        else
-          r:=r+1;
-        fi;
-      od;
-
-      # clean out (but keep old)
-      topho:=ListWithIdenticalEntries(Length(pcgs),0);
-      for r in [1..Length(a)] do
-        topho[DepthOfPcElement(pcgs,a[r][1])]:=r;
-      od;
-
-      r:=Length(a)-1;
-      while r>0 do
-        nn:=a[r];
-        pre:=ExponentsOfPcElement(pcgs,nn[1]);
-        for i in [PositionNonZero(pre)+1..Length(pre)] do
-          if topho[i]<>0 then
-            ro:=RelativeOrders(pcgs)[i];
-            e:=-pre[i]/LeadingExponentOfPcElement(pcgs,a[topho[i]][1]) mod ro;
-            if 2*e>ro then e:=e-ro;fi;
-            nn:=[nn[1]*a[topho[i]][1]^e,nn[2]*a[topho[i]][2]^e];
-            pre:=ExponentsOfPcElement(pcgs,nn[1]);
-          fi;
-        od;
-        Add(a,nn);
-
-        r:=r-1;
-      od;
-
-      # undo pairs
-      a:=[a{[1..Length(a)]}[1],a{[1..Length(a)]}[2]];
-
-    fi;
-
-    pre:=GroupGeneralMappingByImagesNC(hb[2],Range(hom),ao[1],ao[2]);
-    pchom:=GroupGeneralMappingByImagesNC(hb[2],Range(hom),a[1],a[2]);
-
-    if Length(a[2])>0 and (IsAssocWord(a[2][1]) or IsElementOfFpGroup(a[2][1])) then
-  Print("max",Maximum(List(pre!.sourcePcgsImages,Length))," versus ",
-        Maximum(List(pchom!.sourcePcgsImages,Length)),"\n");
-
-      if Sum(List(pre!.sourcePcgsImages,Length))
-        <Sum(List(pchom!.sourcePcgsImages,Length)) then
-        pchom:=pre;
-      fi;
-    fi;
-
-    pre:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
-      ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-
-    #topho:=GroupGeneralMappingByImagesNC(Group(pre),Range(hom),pre,mgi[2]);
-    topho:=EpimorphismFromFreeGroup(Group(pre));
-    #topdec:=GroupGeneralMappingByImagesNC(Group(pre),src,pre,mgi[1]);
     hom!.topho:=topho;
-    #hom!.topdec:=topdec;
-    #hom!.toppi:=[toppers,topi];
     hom!.underlyingpchom:=pchom;
-#if ForAny(ker,x->ImagesRepresentative(pchom,x[2])<>x[3]) then Error("UUU"); fi;
+#  elif false then
+#    nn:=List([1..Length(mgi[1])],x->Tuple([mgi[1][x],mgi[2][x]]));
+#
+#    gens:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
+#        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
+#    map:=GroupGeneralMappingByImagesNC(fam!.factgrp,Group(nn),gens,nn);
+#    a:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
+#    toppers:=List(a,x->x[1]);
+#    topi:=List(a,x->x[2]);
+#
+#    if not (IsPermGroup(fam!.factgrp) or IsPcGroup(fam!.factgrp)) then
+#      Error("cannot factor in factor group");
+#    fi;
+#
+#    # # need to go through words to ensure same image
+#    # map:=DoReverseWords(fam!.presentation,fam!.factgrp);
+#    # toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[1]));
+#    # topi:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[2]));
+#    ker:=[];
+#
+#    for r in Filtered([1..Length(mgi[1])],x->IsOne(mgi[1][x]![1])) do
+#      Add(ker,[mgi[1][r],mgi[1][r]![2],mgi[2][r]]);
+#    od;
+#
+#    for r in fam!.presentation.relators do
+#      a:=MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),toppers);
+#      if not IsOne(a) then
+#        Add(ker,[a,a![2],
+#                MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),topi)]);
+#      fi;
+#    od;
+#
+#    sub:=Group(List(ker,x->x[2]));
+#    if Size(sub)<Size(hb.ker) then
+#      # clean out generators top with toppers
+#      for r in [1..Length(mgi)] do
+#        a:=mgi{[1,2]}[r]; # gen and image
+#        e:=a[1]![1]; # top word
+#        a[1]:=LeftQuotient(
+#          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
+#            toppers),a[1]);
+#        a[2]:=LeftQuotient(
+#          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
+#            topi),a[2]);
+#        if not a[1]![2] in sub then
+#          Add(ker,[a[1],a[1]![2],a[2]]);
+#          sub:=ClosureGroup(sub,a[1]![2]);
+#        fi;
+#      od;
+#    fi;
+#
+#    pcgs:=FamilyPcgs(hb.ker);
+#
+#
+#    if Size(hb.ker)>1 and (IsAssocWord(ker[1][3]) or IsElementOfFpGroup(ker[1][3])) then
+#      e:=3*Length(pcgs);
+#    else
+#      e:=0;
+#    fi;
+#    while Size(sub)<Size(hb.ker) or e>0 do
+#      repeat
+#        a:=[Random(ker),Random([1..Length(mgi[1])])];
+#        r:=a[1][1]^mgi[1][a[2]];
+#      until not r![2] in sub or Size(sub)=Size(hb.ker);
+#      Add(ker,[r,r![2],a[1][3]^mgi[2][a[2]]]);
+#      sub:=ClosureGroup(sub,r![2]);
+#      e:=e-1;
+#    od;
+#    a:=[[],[]];
+#    for r in ker do
+#      Add(a[1],r[2]);
+#      Add(a[2],r[3]);
+#    od;
+#
+#     ao:=List(a,ShallowCopy);
+#
+#    if Length(a[2])>0 and (IsAssocWord(a[2][1]) or IsElementOfFpGroup(a[2][1])) then
+#      # some pre-cleaning to get shorter word lengths
+#      # make pairs
+#      a:=List([1..Length(a[1])],x->[a[1][x],a[2][x]]);
+#      sortfun:=function(x,y)
+#        return DepthOfPcElement(pcgs,x[1])<DepthOfPcElement(pcgs,y[1]) or
+#          (DepthOfPcElement(pcgs,x[1])=DepthOfPcElement(pcgs,y[1]) and
+#          Length(x[2])<Length(y[2]));
+#        end;
+#      Sort(a,sortfun);
+#      while IsOne(a[Length(a)][1]) do a:=a{[1..Length(a)-1]};od;
+#
+#      # clean out
+#      r:=1;
+#      while r<Length(a) do
+#        if DepthOfPcElement(pcgs,a[r][1])=DepthOfPcElement(pcgs,a[r+1][1]) then
+#          ro:=RelativeOrders(pcgs)[DepthOfPcElement(pcgs,a[r][1])];
+#          e:=-LeadingExponentOfPcElement(pcgs,a[r+1][1])
+#            /LeadingExponentOfPcElement(pcgs,a[r][1]) mod ro;
+#          if 2*e>ro then e:=e-ro;fi;
+#          a[r+1]:=[a[r+1][1]*a[r][1]^e,a[r+1][2]*a[r][2]^e];
+#          Sort(a,sortfun);
+#          while IsOne(a[Length(a)][1]) do a:=a{[1..Length(a)-1]};od;
+#        else
+#          r:=r+1;
+#        fi;
+#      od;
+#
+#      # clean out (but keep old)
+#      topho:=ListWithIdenticalEntries(Length(pcgs),0);
+#      for r in [1..Length(a)] do
+#        topho[DepthOfPcElement(pcgs,a[r][1])]:=r;
+#      od;
+#
+#      r:=Length(a)-1;
+#      while r>0 do
+#        nn:=a[r];
+#        pre:=ExponentsOfPcElement(pcgs,nn[1]);
+#        for i in [PositionNonZero(pre)+1..Length(pre)] do
+#          if topho[i]<>0 then
+#            ro:=RelativeOrders(pcgs)[i];
+#            e:=-pre[i]/LeadingExponentOfPcElement(pcgs,a[topho[i]][1]) mod ro;
+#            if 2*e>ro then e:=e-ro;fi;
+#            nn:=[nn[1]*a[topho[i]][1]^e,nn[2]*a[topho[i]][2]^e];
+#            pre:=ExponentsOfPcElement(pcgs,nn[1]);
+#          fi;
+#        od;
+#        Add(a,nn);
+#
+#        r:=r-1;
+#      od;
+#
+#      # undo pairs
+#      a:=[a{[1..Length(a)]}[1],a{[1..Length(a)]}[2]];
+#
+#    fi;
+#
+#    pre:=GroupGeneralMappingByImagesNC(hb.ker,Range(hom),ao[1],ao[2]);
+#    pchom:=GroupGeneralMappingByImagesNC(hb.ker,Range(hom),a[1],a[2]);
+#
+#    if Length(a[2])>0 and (IsAssocWord(a[2][1]) or IsElementOfFpGroup(a[2][1])) then
+#  Print("max",Maximum(List(pre!.sourcePcgsImages,Length))," versus ",
+#        Maximum(List(pchom!.sourcePcgsImages,Length)),"\n");
+#
+#      if Sum(List(pre!.sourcePcgsImages,Length))
+#        <Sum(List(pchom!.sourcePcgsImages,Length)) then
+#        pchom:=pre;
+#      fi;
+#    fi;
+#
+#    pre:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
+#      ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
+#
+#    topho:=EpimorphismFromFreeGroup(Group(pre));
+#    hom!.topho:=topho;
+#    hom!.underlyingpchom:=pchom;
   else
     pchom:=hom!.underlyingpchom;
     topho:=hom!.topho;
-    #topdec:=hom!.topdec;
-    #toppers:=hom!.toppi[1];
-    #topi:=hom!.toppi[2];
-    fam:=FamilyObj(One(Source(hom)));
   fi;
 
   # deal with generators first
@@ -1585,15 +1906,14 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
 
   r:=PreImagesRepresentative(fam!.fphom,
     ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),elm![1]));
-  r:=PreImagesRepresentative(topho,r);
-  a:=LeftQuotient(MappedWord(r,GeneratorsOfGroup(Source(topho)),mgi[1]),elm);
-  a:=MappedWord(r,GeneratorsOfGroup(Source(topho)),mgi[2])
-      *ImagesRepresentative(pchom,a![2]);
+  r:=ImagesRepresentative(topho[1],r);
+  a:=LeftQuotient(MappedWord(r,topho[2],topho[3]),elm);
+  a:=MappedWord(r,topho[2],topho[4])*ImagesRepresentative(pchom,a![2]);
 
-#  hb:=EpimorphismFromFreeGroup(Source(hom));
-#  ker:=MappedWord(Factorization(Source(hom),elm),GeneratorsOfGroup(Source(hb)),
-#    MappingGeneratorsImages(hom)[2]);
-#  if ker<>a then Error("image");fi;
+  #r:=PreImagesRepresentative(topho,r);
+  #a:=LeftQuotient(MappedWord(r,GeneratorsOfGroup(Source(topho)),mgi[1]),elm);
+  #a:=MappedWord(r,GeneratorsOfGroup(Source(topho)),mgi[2])
+  #    *ImagesRepresentative(pchom,a![2]);
 
   return a;
 end);
@@ -1601,7 +1921,9 @@ end);
 InstallMethod(Size,"hybrid groups",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(G)
-  return Product(List(HybridBits(G){[1,2]},Size));
+local b;
+  b:=HybridBits(G);
+  return Size(b.factor)*Size(b.ker);
 end);
 
 WreathModuleCoverHybrid:=function(G,module)
@@ -1610,6 +1932,7 @@ local coh,splitcover,cover,i,ext;
   SetSize(coh.group,Size(G));
 
   splitcover:=WreathModuleSplitCoverHybrid(G,coh);
+  splitcover!.originalFactor:=G;
   ShadowHybrid(FamilyObj(One(splitcover)));
   cover:=OwnHybrid(splitcover);
   for i in coh.cohomology do
@@ -1620,13 +1943,16 @@ local coh,splitcover,cover,i,ext;
       x->MappedWord(x,GeneratorsOfGroup(coh.presentation.group),
         GeneratorsOfGroup(ext){[1..Length(GeneratorsOfGroup(coh.group))]}));
 
-    cover:=SubdirectHybrid(cover,Group(ext));
+    ext:=Group(ext);
+    cover!.originalFactor:=G;
+    ext!.originalFactor:=G;
+    cover:=SubdirectHybrid(cover,ext);
   od;
   FamilyObj(One(cover))!.fphom:=coh.fphom;
   return cover;
 end;
 
-# TMP fix
+# TMP fix for 4.11
 InstallMethod( IsomorphismFpGroupByChiefSeries,"pc grp",true,
                [IsPcGroup,IsString], 0,
 function(g,str)
@@ -1681,6 +2007,7 @@ if not IsBound(MakeFpGroupToMonoidHomType1) then
   function(G)
   local iso,fp,n,dec,homs,mos,i,j,ffp,imo,m,k,gens,fm,mgens,rules,
         loff,off,monreps,left,right,fmgens,r,diff,monreal,nums,reduce,hom,dept;
+Error("use?");
     if IsSymmetricGroup(G) then
       i:=SymmetricGroup(SymmetricDegree(G));
       iso:=CheapIsomSymAlt(G,i)*IsomorphismFpGroup(i);
@@ -1831,6 +2158,8 @@ if not IsBound(MakeFpGroupToMonoidHomType1) then
   end);
 fi;
 
+#####
+
 # convert (full family) hybrid to fp
 FpGroupHybrid:=function(h)
 local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
@@ -1922,7 +2251,7 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 
   fam:=FamilyObj(One(h));
   fs:=HybridBits(h);
-  domon:=Size(Source(fam!.fphom))=Size(fs[1]);
+  domon:=Size(Source(fam!.fphom))=Size(fs.factor);
 
   if domon and
    Length(fam!.auts)<>Length(GeneratorsOfGroup(Range(fam!.fphom))) then
@@ -1930,12 +2259,12 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   fi;
 
   if domon then
-    kermon:=ShallowCopy(ConfluentMonoidPresentationForGroup(fs[2]));
+    kermon:=ShallowCopy(ConfluentMonoidPresentationForGroup(fs.ker));
     kermon.freegens:=FreeGeneratorsOfFpMonoid(Range(kermon.monhom));
     iso:=kermon!.fphom;
 
   else
-    iso:=IsomorphismFpGroup(fs[2]);
+    iso:=IsomorphismFpGroup(fs.ker);
   fi;
 
   kfp:=Range(iso);
@@ -2492,8 +2821,10 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
 #oldcoh:=fail;
   for i in irr do
     Print("Irreducible Module ",Position(irr,i),", dim=",i.dimension,"\n");
-    cov:=WreathModuleCoverHybrid(a,i);
-    SetSize(cov,Product(HybridBits(cov){[1,2]},Size));
+    cov:=WreathModuleCoverHybrid(a,i:dowords:=false);
+    cov!.originalFactor:=a;
+    b:=HybridBits(cov:dowords:=false);
+    SetSize(cov,Size(b.factor)*Size(b.ker));
     b:=FamilyObj(One(cov));
 
     ker:=List(RelatorsOfFpGroup(G),x->MappedWord(x,FreeGeneratorsOfFpGroup(G),
@@ -2514,7 +2845,8 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
       Add(ext,LogInt(Size(cov)/(Size(a)*Size(kerpc)),p));
       Print("Cover of size ",Size(cov)," extends by dimension ",
         ext[Length(ext)],"\n");
-      Add(newq,[cov,ker,ext[Length(ext)],QuotientHybrid(cov,ker)]);
+      Add(newq,[cov,ker,ext[Length(ext)],
+        QuotientHybrid(cov,ker:dowords:=false)]);
     else
       Print("Cover of size ",Size(cov)," does not extend\n");
       Add(ext,0);
@@ -2528,15 +2860,17 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
   if Length(newq)=0 then return q;fi;
 
   cov:=newq[1][4];
+  if IsHybridGroup(a) then cov!.originalFactor:=a; fi;
   for i in [2..Length(newq)] do
     b:=newq[i][4]; 
-    cov:=SubdirectHybrid(cov,b);
+    if IsHybridGroup(a) then b!.originalFactor:=a; fi;
+    cov:=SubdirectHybrid(cov,b:dowords:=false);
   od;
 
-  b:=HybridBits(cov);
-  SetSize(cov,Product(HybridBits(cov){[1,2]},Size));
   fam:=FamilyObj(One(cov));
   if IsBound(fam!.quickermult) and fam!.quickermult<>fail then
+    b:=HybridBits(cov:dowords:=false);
+    SetSize(cov,Size(b.factor)*Size(b.ker));
     b:=Group(List(GeneratorsOfGroup(cov),fam!.quickermult));
     SetSize(b,Size(cov));
     cov:=b;
@@ -2554,13 +2888,15 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
         Error("no fphom");
       fi;
     fi;
-    b:=HybridBits(cov);
   fi;
+
+  if IsHybridGroup(a) then cov!.originalFactor:=a; fi;
+  b:=HybridBits(cov);
 
   Print("Recalculate module action\n");
 
   # recalculate module action
-  kerpc:=Pcgs(b[2]);
+  kerpc:=Pcgs(b.ker);
   mo:=[];
   for g in GeneratorsOfGroup(cov) do
     b:=[];
