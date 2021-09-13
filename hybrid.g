@@ -205,8 +205,6 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   y:=HybridGroupAutrace(fam,a![2],b![1])*b![2]; #bottom product
 
   # now reduce x with rules
-  #x:=UnderlyingElement(ImagesRepresentative(fam!.monhom,
-  # ElementOfFpGroup(FamilyObj(One(Source(fam!.monhom))),x)));
 
   tzrules:=fam!.tzrules;
   starters:=tzrules.starters;
@@ -215,7 +213,7 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   x:=LetterRepAssocWord(xc);
   # collect from the left
 
-lc:=0;
+#lc:=0;
   repeat
     has:=false;
     p:=1;
@@ -227,7 +225,7 @@ lc:=0;
           # shortcut test for rest
           and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
           and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
-lc:=lc+1;
+#lc:=lc+1;
 
           tail:=x{[p+Length(sta[r,1])..Length(x)]};
           # do free cancellation, which does not involve tails
@@ -273,76 +271,76 @@ lc:=lc+1;
       p:=p+1;
     od;
   until has=false;
-  xl:=x;
-
-rc:=0;
-  # check from right
-  x:=LetterRepAssocWord(xc);
-  repeat
-    has:=false;
-    # collect from the right
-    p:=Length(x);
-    while p>=1 and Length(x)>0 do
-      sta:=starters[x[p]+offset];
-      r:=1;
-      while r<=Length(sta) do
-  #if sta[r,1][1]<>x[p] then Error("bla");fi;
-        if Length(sta[r,1])+p-1<=Length(x)
-  #and sta[r,1][1]=x[p] 
-          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
-          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
-rc:=rc+1;
-
-          tail:=x{[p+Length(sta[r,1])..Length(x)]};
-          #x:=Subword(x,1,p-1)*rules[r,2];
-          # do free cancellation, which does not involve tails
-          cancel:=0;
-          bd:=Length(sta[r,2]);if p-1<bd then bd:=p-1;fi;
-          while cancel<bd and x[p-1-cancel]=-sta[r,2][1+cancel] do
-            cancel:=cancel+1;
-          od;
-          if cancel>0 then
-            x:=Concatenation(x{[1..p-1-cancel]},
-              sta[r,2]{[cancel+1..Length(sta[r,2])]});
-          else
-            x:=Concatenation(x{[1..p-1]},sta[r,2]);
-          fi;
-
-          popo:=Position(fam!.presentation.monrulpos,sta[r,3]);
-          if popo<>fail and not IsOne(fam!.tails[popo]) then
-            #pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
-            #    ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
-            y:=HybridGroupAutrace(fam,fam!.tails[popo],tail)*y;
-          fi;
-          #x:=x*tail;
-          # do free cancellation, which does not involve tails
-          cancel:=0;
-          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
-          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
-            cancel:=cancel+1;
-          od;
-          if cancel>0 then
-            x:=Concatenation(x{[1..Length(x)-cancel]},
-              tail{[cancel+1..Length(tail)]});
-          else
-            x:=Concatenation(x,tail);
-          fi;
-#Print("rewr ",x,",",r,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
-
-          # reset position to last where something new could happen
-          p:=Minimum(Length(x)+1,p+Length(sta[r,2])); # -1 will happen immediately after this
-          p:=Length(x);
-          r:=Length(sta);
-          has:=true;
-        fi;
-        r:=r+1;
-      od;
-      p:=p-1;
-    od;
-  until has=false;
-
-Print("Left: ",lc," vs Right:",rc,"\n");
-  if x<>xl then Error("collection error");fi;
+#  xl:=x;
+#
+#rc:=0;
+#  # check from right
+#  x:=LetterRepAssocWord(xc);
+#  repeat
+#    has:=false;
+#    # collect from the right
+#    p:=Length(x);
+#    while p>=1 and Length(x)>0 do
+#      sta:=starters[x[p]+offset];
+#      r:=1;
+#      while r<=Length(sta) do
+#  #if sta[r,1][1]<>x[p] then Error("bla");fi;
+#        if Length(sta[r,1])+p-1<=Length(x)
+#  #and sta[r,1][1]=x[p] 
+#          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
+#          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
+#rc:=rc+1;
+#
+#          tail:=x{[p+Length(sta[r,1])..Length(x)]};
+#          #x:=Subword(x,1,p-1)*rules[r,2];
+#          # do free cancellation, which does not involve tails
+#          cancel:=0;
+#          bd:=Length(sta[r,2]);if p-1<bd then bd:=p-1;fi;
+#          while cancel<bd and x[p-1-cancel]=-sta[r,2][1+cancel] do
+#            cancel:=cancel+1;
+#          od;
+#          if cancel>0 then
+#            x:=Concatenation(x{[1..p-1-cancel]},
+#              sta[r,2]{[cancel+1..Length(sta[r,2])]});
+#          else
+#            x:=Concatenation(x{[1..p-1]},sta[r,2]);
+#          fi;
+#
+#          popo:=Position(fam!.presentation.monrulpos,sta[r,3]);
+#          if popo<>fail and not IsOne(fam!.tails[popo]) then
+#            #pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
+#            #    ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
+##            y:=HybridGroupAutrace(fam,fam!.tails[popo],tail)*y;
+#          fi;
+#          #x:=x*tail;
+#          # do free cancellation, which does not involve tails
+#          cancel:=0;
+#          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
+#          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
+#            cancel:=cancel+1;
+#          od;
+#          if cancel>0 then
+#            x:=Concatenation(x{[1..Length(x)-cancel]},
+#              tail{[cancel+1..Length(tail)]});
+#          else
+#            x:=Concatenation(x,tail);
+#          fi;
+##Print("rewr ",x,",",r,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
+#
+#          # reset position to last where something new could happen
+#          p:=Minimum(Length(x)+1,p+Length(sta[r,2])); # -1 will happen immediately after this
+#          p:=Length(x);
+#          r:=Length(sta);
+#          has:=true;
+#        fi;
+#        r:=r+1;
+#      od;
+#      p:=p-1;
+#    od;
+#  until has=false;
+#
+#Print("Left: ",lc,"\n");
+#  if x<>xl then Error("collection error");fi;
 
   x:=AssocWordByLetterRep(FamilyObj(fam!.factorone),x);
 #  if not IsOne(MappedWord(a![1]*b![1]/x,GeneratorsOfGroup(fam!.presentation.group),GeneratorsOfGroup(fam!.factgrp)))
