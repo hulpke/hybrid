@@ -181,7 +181,7 @@ InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(a,b)
 local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
-      sta,cancel;
+      sta,cancel,xc;
   fam:=FamilyObj(a);
 
   if IsBound(fam!.quickermult) and fam!.quickermult<>fail
@@ -201,7 +201,7 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 #    return m;
 #  end;
 
-  x:=a![1]*b![1]; # top product
+  xc:=a![1]*b![1]; # top product
   y:=HybridGroupAutrace(fam,a![2],b![1])*b![2]; #bottom product
 
   # now reduce x with rules
@@ -212,7 +212,72 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   starters:=tzrules.starters;
   offset:=tzrules.offset;
   tzrules:=tzrules.tzrules;
-  x:=LetterRepAssocWord(x);
+  x:=LetterRepAssocWord(xc);
+  # collect from the left
+
+lc:=0;
+  repeat
+    has:=false;
+    p:=1;
+    while p<=Length(x) do
+      sta:=starters[x[p]+offset];
+      r:=1;
+      while r<=Length(sta) do
+        if Length(sta[r,1])+p-1<=Length(x)
+          # shortcut test for rest
+          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
+          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
+lc:=lc+1;
+
+          tail:=x{[p+Length(sta[r,1])..Length(x)]};
+          # do free cancellation, which does not involve tails
+          cancel:=0;
+          bd:=Length(sta[r,2]);if p-1<bd then bd:=p-1;fi;
+          while cancel<bd and x[p-1-cancel]=-sta[r,2][1+cancel] do
+            cancel:=cancel+1;
+          od;
+          if cancel>0 then
+            x:=Concatenation(x{[1..p-1-cancel]},
+              sta[r,2]{[cancel+1..Length(sta[r,2])]});
+          else
+            x:=Concatenation(x{[1..p-1]},sta[r,2]);
+          fi;
+
+          popo:=Position(fam!.presentation.monrulpos,sta[r,3]);
+          if popo<>fail and not IsOne(fam!.tails[popo]) then
+            #pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
+            #    ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
+            y:=HybridGroupAutrace(fam,fam!.tails[popo],tail)*y;
+          fi;
+          #x:=x*tail;
+          # do free cancellation, which does not involve tails
+          cancel:=0;
+          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
+          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
+            cancel:=cancel+1;
+          od;
+          if cancel>0 then
+            x:=Concatenation(x{[1..Length(x)-cancel]},
+              tail{[cancel+1..Length(tail)]});
+          else
+            x:=Concatenation(x,tail);
+          fi;
+#Print("rewl ",x,",",r,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
+
+          p:=0; # as +1 is next
+          has:=true;
+          r:=Length(sta); # to exit sta loop
+        fi;
+        r:=r+1;
+      od;
+      p:=p+1;
+    od;
+  until has=false;
+  xl:=x;
+
+rc:=0;
+  # check from right
+  x:=LetterRepAssocWord(xc);
   repeat
     has:=false;
     # collect from the right
@@ -226,6 +291,7 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   #and sta[r,1][1]=x[p] 
           and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
           and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
+rc:=rc+1;
 
           tail:=x{[p+Length(sta[r,1])..Length(x)]};
           #x:=Subword(x,1,p-1)*rules[r,2];
@@ -261,7 +327,7 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
           else
             x:=Concatenation(x,tail);
           fi;
-#Print("rewr ",x,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
+#Print("rewr ",x,",",r,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
 
           # reset position to last where something new could happen
           p:=Minimum(Length(x)+1,p+Length(sta[r,2])); # -1 will happen immediately after this
@@ -274,6 +340,10 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
       p:=p-1;
     od;
   until has=false;
+
+Print("Left: ",lc," vs Right:",rc,"\n");
+  if x<>xl then Error("collection error");fi;
+
   x:=AssocWordByLetterRep(FamilyObj(fam!.factorone),x);
 #  if not IsOne(MappedWord(a![1]*b![1]/x,GeneratorsOfGroup(fam!.presentation.group),GeneratorsOfGroup(fam!.factgrp)))
 #  then
@@ -733,8 +803,11 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
   od;
 
   # recalculate tails
-  nfam!.tails:=List(pres.relators,x->Inverse(newrd(MappedWord(x,
-    GeneratorsOfGroup(pres.group),first))));
+  nfam!.tails:=List(pres.relators,x->newrd(MappedWord(
+
+    # invert before mapping, as that is cheaper
+    Inverse(x),
+    GeneratorsOfGroup(pres.group),first)));
 
   nwf:=FamilyObj(One(pf));
   pf:=pres.group/pres.relators;
@@ -1102,8 +1175,14 @@ function( pcgs, gens, imgs )
 
     # <new> contains a list of generators and images
     new := List( [1..Length(gens)], i -> [gens[i], imgs[i]]);
-    f   := function( x, y ) return DepthOfPcElement( pcgs, x[1] )
-                                   < DepthOfPcElement( pcgs, y[1] ); end;
+    f   := function( x, y ) 
+      if DepthOfPcElement( pcgs, x[1] )=DepthOfPcElement( pcgs, y[1] )
+        then return Length(x[2])>Length(y[2]);
+      else
+        return DepthOfPcElement( pcgs, x[1] )
+                                   < DepthOfPcElement( pcgs, y[1] );
+      fi;
+    end;
     Sort( new, f );
 
     # <seen> holds a list of words already seen
@@ -1192,7 +1271,7 @@ function( pcgs, gens, imgs )
                   od;
                 fi;
 #            else
-#              Print("Ignore ",u," ",List(igs,x->Length(x[2])),"\n");
+#              Print("Ignore ",uw,":",Length(u[2])," ",List(igs,x->Length(x[2])),"\n");
             fi;
         od;
     od;
