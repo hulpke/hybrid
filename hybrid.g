@@ -3056,8 +3056,8 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t;
   AppendTo(file,"ffam:=FamilyObj(One(free));\n");
 
   AppendTo(file,"pres:=rec(group:=free,\n",
-    "  killrelators:=List(",List(pres.killrelators,LetterRepAssocWord),
-      ",x->AssocWordByLetterRep(ffam,x)),\n",
+#    "  killrelators:=List(",List(pres.killrelators,LetterRepAssocWord),
+#      ",x->AssocWordByLetterRep(ffam,x)),\n",
     "  relators:=List(",List(pres.relators,LetterRepAssocWord),
       ",x->AssocWordByLetterRep(ffam,x)),\n",
     "  prewords:=List(",List(pres.prewords,LetterRepAssocWord),
