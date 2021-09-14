@@ -3032,3 +3032,80 @@ local f,a,b,rels;
   rels:=[a*b*a^-2*b*a*b^-1,a*(b^-1*a^3*b^-1*a^-3)^q];
   return f/rels;
 end;
+
+SaveHybridGroup:=function(file,fam)
+local pc,pcgs,auts,str,free,fp,mon,pres,t;
+  PrintTo(file,"# Use `ReadAsFunction`\n",
+    "local i,fam,type,pc,pcgs,auts,pres,free,fp,mon,fmon,ffam,mfam,mrels,gens,tails,t;\n");
+  pc:=fam!.normal;
+  pcgs:=FamilyPcgs(pc);
+  auts:=List(fam!.auts,x->List(pcgs,y->ExponentsOfPcElement(pcgs,ImagesRepresentative(x,y))));
+
+
+  str:=GapInputPcGroup(pc,"pc");
+  AppendTo(file,str);
+  AppendTo(file,"pcgs:=FamilyPcgs(pc);\n");
+  AppendTo(file,"auts:=",auts,";\n");
+  AppendTo(file,"auts:=",auts,";\n");
+  AppendTo(file,"auts:=List(auts,x->GroupHomomorphismByImagesNC(pc,pc,pcgs,\n",
+    "  List(x,y->PcElementByExponents(pcgs,y))));\n");
+
+  pres:=fam!.presentation;
+  free:=pres.group;
+  AppendTo(file,"free:=FreeGroup(",List(GeneratorsOfGroup(free),String),");\n");
+  AppendTo(file,"ffam:=FamilyObj(One(free));\n");
+
+  AppendTo(file,"pres:=rec(group:=free,\n",
+    "  killrelators:=List(",List(pres.killrelators,LetterRepAssocWord),
+      ",x->AssocWordByLetterRep(ffam,x)),\n",
+    "  relators:=List(",List(pres.relators,LetterRepAssocWord),
+      ",x->AssocWordByLetterRep(ffam,x)),\n",
+    "  prewords:=List(",List(pres.prewords,LetterRepAssocWord),
+      ",x->AssocWordByLetterRep(ffam,x)),\n",
+    "  monrulpos:=",pres.monrulpos,");\n");
+  fp:=Range(fam!.fphom);
+  AppendTo(file,"fp:=free/List(",List(RelatorsOfFpGroup(fp),LetterRepAssocWord),
+      ",x->AssocWordByLetterRep(ffam,x));\n");
+  mon:=Range(fam!.monhom);
+  AppendTo(file,"fmon:=FreeMonoid(",List(GeneratorsOfMonoid(FreeMonoidOfFpMonoid(mon)),String),");\n");
+  AppendTo(file,"mfam:=FamilyObj(One(fmon));\n");
+  AppendTo(file,"mrels:=List(",List(RelationsOfFpMonoid(mon),x->List(x,LetterRepAssocWord)),
+      ",x->List(x,y->AssocWordByLetterRep(mfam,y)));\n");
+  AppendTo(file,"mon:=fmon/mrels;\n");
+
+  t:=List(fam!.tails,x->ExponentsOfPcElement(pcgs,x));
+  AppendTo(file,"t:=",t,";\n");
+
+  AppendTo(file,"fam:=NewFamily(\"Hybrid elements family\",IsHybridGroupElement);\n");
+  AppendTo(file,"fam!.presentation:=pres;\n");
+  AppendTo(file,"fam!.factgrp:=",fam!.factgrp,";\n");
+  AppendTo(file,"fam!.fphom:=GroupHomomorphismByImagesNC(fam!.factgrp,fp,GeneratorsOfGroup(fam!.factgrp),\n",
+    "    GeneratorsOfGroup(fp));\n");
+  AppendTo(file,"fam!.monhom:=MakeFpGroupToMonoidHomType1(fp,mon);\n");
+  AppendTo(file,"fam!.tzrules:=TranslatedMonoidRules(fam!.monhom);\n");
+  AppendTo(file,"fam!.auts:=auts;\n");
+  AppendTo(file,"fam!.autsinv:=List(auts,Inverse);\n");
+  AppendTo(file,"fam!.factorone:=One(free);\n");
+  AppendTo(file,"fam!.normalone:=One(pc);\n");
+  AppendTo(file,"fam!.normal:=pc;\n");
+  AppendTo(file,"fam!.wholeSize:=Size(fam!.factgrp)*Size(fam!.normal);\n");
+  AppendTo(file,"HybridAutMats(fam);\n");
+  AppendTo(file,"type:=NewType(fam,IsHybridGroupElementDefaultRep);\n");
+  AppendTo(file,"fam!.defaultType:=type;\n");
+  AppendTo(file,"SetOne(fam,HybridGroupElement(fam,fam!.factorone,fam!.normalone));\n");
+  AppendTo(file,"gens:=[];\n");
+  AppendTo(file,"for i in GeneratorsOfGroup(free) do\n");
+  AppendTo(file,"Add(gens,HybridGroupElement(fam,i,fam!.normalone));\n");
+  AppendTo(file,"od;\n");
+  AppendTo(file,"for i in pcgs do\n");
+  AppendTo(file,"Add(gens,HybridGroupElement(fam,fam!.factorone,i));\n");
+  AppendTo(file,"od;\n");
+  AppendTo(file,"tails:=[];\n");
+  AppendTo(file,"for i in t do\n");
+  AppendTo(file,"Add(tails,PcElementByExponents(pcgs,i));\n");
+  AppendTo(file,"od;\n");
+  AppendTo(file,"fam!.tails:=tails;\n");
+  AppendTo(file,"gens:=Group(gens);\n");
+  AppendTo(file,"fam!.wholeGroup:=gens;\n");
+  AppendTo(file,"return gens;\n");
+end;
