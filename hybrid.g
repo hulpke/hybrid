@@ -3063,7 +3063,7 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t;
     "  prewords:=List(",List(pres.prewords,LetterRepAssocWord),
       ",x->AssocWordByLetterRep(ffam,x)),\n",
     "  monrulpos:=",pres.monrulpos,");\n");
-  fp:=Range(fam!.fphom);
+  fp:=Source(fam!.monhom);
   AppendTo(file,"fp:=free/List(",List(RelatorsOfFpGroup(fp),LetterRepAssocWord),
       ",x->AssocWordByLetterRep(ffam,x));\n");
   mon:=Range(fam!.monhom);
