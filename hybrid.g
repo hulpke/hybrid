@@ -767,6 +767,20 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     od;
     mon:=FactorFreeMonoidByRelations(mon,mrels);
 
+    # transfer wreath ordering info
+    if HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then
+      pres:=ReducedConfluentRewritingSystem(Range(fam!.monhom));
+      pf:=OrderingOfRewritingSystem(pres);
+      if HasLevelsOfGenerators(pf) then
+        pf:=LevelsOfGenerators(pf);
+        pf:=pf{[1..Length(GeneratorsOfMonoid(mon))]};
+        pf:=pf-Minimum(pf)+1;
+        pf:=WreathProductOrdering(FamilyObj(RelationsOfFpMonoid(mon)[1][1]),pf);
+        pres:=KnuthBendixRewritingSystem(mon,pf:isconfluent);
+        SetReducedConfluentRewritingSystem(mon,pres);
+      fi;
+    fi;
+
     pf:=FreeGroup(List([1..pos],x->Concatenation("Q",String(x)))); 
 
     trawrd:=function(wrd)
@@ -3034,7 +3048,7 @@ local f,a,b,rels;
 end;
 
 SaveHybridGroup:=function(file,fam)
-local pc,pcgs,auts,str,free,fp,mon,pres,t,rws;
+local pc,pcgs,auts,str,free,fp,mon,pres,t,rws,ord;
   PrintTo(file,"# Use `ReadAsFunction`\n",
     "local i,fam,type,pc,pcgs,auts,pres,free,fp,mon,fmon,ffam,mfam,mrels,\n",
     "       gens,tails,t,ord,rws;\n");
@@ -3076,13 +3090,13 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t,rws;
 
   if HasReducedConfluentRewritingSystem(mon) then
     rws:=ReducedConfluentRewritingSystem(mon);
-    if Rules(rws)=RelationsOfFpMonoid(mon) and
+    if Set(Rules(rws))=Set(RelationsOfFpMonoid(mon)) and
       HasOrderingOfRewritingSystem(rws) then
         ord:=OrderingOfRewritingSystem(rws);
         if HasLevelsOfGenerators(ord) then
           AppendTo(file,"ord:=WreathProductOrdering(FamilyObj(One(fmon)),\n",
             LevelsOfGenerators(ord),");\n");
-          AppendTo(file,"rws:=KnuthBendixRewritingSystem(mon,ord);\n",
+          AppendTo(file,"rws:=KnuthBendixRewritingSystem(mon,ord:isconfluent);\n",
           "SetReducedConfluentRewritingSystem(mon,rws);\n");
         fi;
     fi;
