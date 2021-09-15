@@ -3034,9 +3034,10 @@ local f,a,b,rels;
 end;
 
 SaveHybridGroup:=function(file,fam)
-local pc,pcgs,auts,str,free,fp,mon,pres,t;
+local pc,pcgs,auts,str,free,fp,mon,pres,t,rws;
   PrintTo(file,"# Use `ReadAsFunction`\n",
-    "local i,fam,type,pc,pcgs,auts,pres,free,fp,mon,fmon,ffam,mfam,mrels,gens,tails,t;\n");
+    "local i,fam,type,pc,pcgs,auts,pres,free,fp,mon,fmon,ffam,mfam,mrels,\n",
+    "       gens,tails,t,ord,rws;\n");
   pc:=fam!.normal;
   pcgs:=FamilyPcgs(pc);
   auts:=List(fam!.auts,x->List(pcgs,y->ExponentsOfPcElement(pcgs,ImagesRepresentative(x,y))));
@@ -3072,6 +3073,20 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t;
   AppendTo(file,"mrels:=List(",List(RelationsOfFpMonoid(mon),x->List(x,LetterRepAssocWord)),
       ",x->List(x,y->AssocWordByLetterRep(mfam,y)));\n");
   AppendTo(file,"mon:=fmon/mrels;\n");
+
+  if HasReducedConfluentRewritingSystem(mon) then
+    rws:=ReducedConfluentRewritingSystem(mon);
+    if Rules(rws)=RelationsOfFpMonoid(mon) and
+      HasOrderingOfRewritingSystem(rws) then
+        ord:=OrderingOfRewritingSystem(rws);
+        if HasLevelsOfGenerators(ord) then
+          AppendTo(file,"ord:=WreathProductOrdering(FamilyObj(One(fmon)),\n",
+            LevelsOfGenerators(ord),");\n");
+          AppendTo(file,"rws:=KnuthBendixRewritingSystem(mon,ord);\n",
+          "SetReducedConfluentRewritingSystem(mon,rws);\n");
+        fi;
+    fi;
+  fi;
 
   t:=List(fam!.tails,x->ExponentsOfPcElement(pcgs,x));
   AppendTo(file,"t:=",t,";\n");
