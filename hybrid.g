@@ -777,6 +777,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
         pf:=pf-Minimum(pf)+1;
         pf:=WreathProductOrdering(FamilyObj(RelationsOfFpMonoid(mon)[1][1]),pf);
         pres:=KnuthBendixRewritingSystem(mon,pf:isconfluent);
+        SetOrderingOfRewritingSystem(pres,pf);
         SetReducedConfluentRewritingSystem(mon,pres);
       fi;
     fi;
@@ -853,8 +854,6 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
 
   nfam!.quickermult:=fail;
   nfam!.isShadowFamily:=true;
-
-#Error("KUH");
 
   # translation functions
 
@@ -1317,7 +1316,7 @@ local w,e,es,i,j,a,b,ee,p,ker,kerw;
   ker:=[];
   kerw:=[];
   i:=0;
-  while Length(e)<lim do
+  while Length(e)<lim and i<Length(e) do
     i:=i+1;
     for j in [1..Length(gens)] do
       a:=e[i]*gens[j];
@@ -3091,8 +3090,12 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t,rws,ord;
   if HasReducedConfluentRewritingSystem(mon) then
     rws:=ReducedConfluentRewritingSystem(mon);
     if Set(Rules(rws))=Set(RelationsOfFpMonoid(mon)) and
-      HasOrderingOfRewritingSystem(rws) then
-        ord:=OrderingOfRewritingSystem(rws);
+      (IsBound (rws!.ordering) or HasOrderingOfRewritingSystem(rws)) then
+        if HasOrderingOfRewritingSystem(rws) then
+          ord:=OrderingOfRewritingSystem(rws);
+        else
+          ord:=rws!.ordering;
+        fi;
         if HasLevelsOfGenerators(ord) then
           AppendTo(file,"ord:=WreathProductOrdering(FamilyObj(One(fmon)),\n",
             LevelsOfGenerators(ord),");\n");
