@@ -127,6 +127,19 @@ function(a,b)
   return a![1]<b![1] or (a![1]=b![1] and a![2]<b![2]);
 end);
 
+InstallMethod(Order,"hybrid group elts",true,
+  [IsHybridGroupElementDefaultRep],0,
+function(a)
+local q,o,fam;
+  fam:=FamilyObj(a);
+  q:=MappedWord(a![1],GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp));
+  o:=Order(q);
+  a:=a^o;
+  if not IsOne(a![1]) then Error("order!");fi;
+  return o*Order(a![2]);
+end);
+
 BindGlobal("HybridAutMats",function(fam)
 local g,gf,m,mats,a,pcgs;
   #g:=Source(fam!.auts[1]);
