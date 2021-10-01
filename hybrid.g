@@ -1799,7 +1799,7 @@ InstallMethod(ImagesRepresentative,"hybrid",FamSourceEqFamElm,
     IsMultiplicativeElementWithInverse and IsHybridGroupElementDefaultRep],0,
 function(hom,elm)
 local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
-      pcgs,sortfun,e,ro,i,nn,ao,pres,gens;
+      pcgs,sortfun,e,ro,i,nn,ao,pres,gens,prevs,rw,ri;
 
 #Error("Imgrep");
   mgi:=MappingGeneratorsImages(hom);
@@ -2010,8 +2010,33 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
   r:=PreImagesRepresentative(fam!.fphom,
     ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),elm![1]));
   r:=ImagesRepresentative(topho[1],r);
-  a:=LeftQuotient(MappedWord(r,topho[2],topho[3]),elm);
-  a:=MappedWord(r,topho[2],topho[4])*ImagesRepresentative(pchom,a![2]);
+Print("RMI:",r,"\n");
+  if not IsBound(hom!.previouses) then hom!.previouses:=[]; fi;
+  prevs:=hom!.previouses;
+  i:=PositionProperty(prevs,x->x[1]=r);
+  if i=fail then
+    rw:=MappedWord(Inverse(r),topho[2],topho[3]);
+    ri:=MappedWord(r,topho[2],topho[4]);
+    Add(prevs,[r,rw,ri]);
+    if Length(prevs)>20 then
+      for i in [1..20] do
+        prevs[i]:=prevs[i+1];
+      od;
+      for i in [21..Length(prevs)] do Unbind(prevs[i]);od;
+    fi;
+  else
+    rw:=prevs[i][2];
+    ri:=prevs[i][3];
+    if i<>Length(prevs) then 
+      a:=prevs[i];
+      prevs[i]:=prevs[Length(prevs)];
+      prevs[Length(prevs)]:=a;
+    fi;
+  fi;
+
+  #a:=LeftQuotient(rw,elm);
+  a:=rw*elm;
+  a:=ri*ImagesRepresentative(pchom,a![2]);
 
   #r:=PreImagesRepresentative(topho,r);
   #a:=LeftQuotient(MappedWord(r,GeneratorsOfGroup(Source(topho)),mgi[1]),elm);
