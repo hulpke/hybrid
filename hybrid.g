@@ -1380,7 +1380,7 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of;
+  xker,xkerw,addker,dowords,ffam,of,norsz;
 
   dowords:=ValueOption("dowords")<>false; # default to true
   if IsBound(G!.hybridbits) and (dowords=false or
@@ -1400,6 +1400,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     GeneratorsOfGroup(fam!.presentation.group),
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
+  norsz:=Size(fam!.normal);
 
   # calculate elements corresponding to fp generators
 
@@ -1465,14 +1466,17 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   # strip generators of group with representatives word and use powers.
   for i in [1..Length(sel)] do
-    j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
-      ImagesRepresentative(iso,top[i])),
-      FreeGeneratorsOfFpGroup(fp),map);
-    addker(j);
-    addker(gfg[sel[i]]^Order(top[i]));
+    if Size(sub)<norsz then
+      j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
+        ImagesRepresentative(iso,top[i])),
+        FreeGeneratorsOfFpGroup(fp),map);
+      addker(j);
+      addker(gfg[sel[i]]^Order(top[i]));
+    fi;
   od;
 
-  if dowords and IsPermGroup(factor) or IsPcGroup(factor) then
+  if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
+    and Size(sub)<norsz then
 
     # short words
     j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},1000);
@@ -1497,14 +1501,16 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
 
   # evaluate relators
-  for i in List(RelatorsOfFpGroup(fp),
-                     x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
-    addker(i);
-  od;
+  if Size(sub)<norsz then
+    for i in List(RelatorsOfFpGroup(fp),
+                      x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
+      addker(i);
+    od;
+  fi;
 
   # now form normal closure
   i:=1;
-  while i<=Length(ker) do
+  while i<=Length(ker) and Size(sub)<norsz do
     for j in gfg do
       addker(kerw[i]^j);
     od;
@@ -2540,7 +2546,11 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
 
     fi;
   od;
-  gens:=Group(gens);
+  if GeneratorsOfGroup(f)=gens then 
+    gens:=f;
+  else
+    gens:=SubgroupNC(f,gens);
+  fi;
 
   if domon<>false then
 
@@ -3178,4 +3188,67 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t,rws,ord;
   AppendTo(file,"gens:=Group(gens);\n");
   AppendTo(file,"fam!.wholeGroup:=gens;\n");
   AppendTo(file,"return gens;\n");
+end;
+
+# use easier pres. for factor
+FpGroupHybridOtherFactor:=function(h,factormap)
+local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,frank,
+  fpre,frange,hpcgs,
+  fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,redwith,
+  fphom,kb,invliv;
+
+  fam:=FamilyObj(One(h));
+  fs:=HybridBits(h);
+
+  if fs.factor<>Source(factormap) then Error("factor bit wrong");fi;
+  frange:=Range(factormap);
+  fpre:=List(GeneratorsOfGroup(frange),x->
+    ImagesRepresentative(fam!.fphom,PreImagesRepresentative(factormap,x)));
+
+  fpre:=List(fpre,x->MappedWord(x,GeneratorsOfGroup(Range(fam!.fphom)),
+    GeneratorsOfGroup(h){[1..Length(fam!.auts)]}));
+
+  frank:=Length(fpre);
+
+  iso:=IsomorphismFpGroup(fs.ker);
+
+  kfp:=Range(iso);
+  pcgs:=List(GeneratorsOfGroup(kfp),x->PreImagesRepresentative(iso,x));
+  hpcgs:=List(pcgs,x->HybridGroupElement(fam,fam!.factorone,x));
+
+  gens:=Concatenation(fpre,hpcgs);
+
+  f:=FreeGroup(frank+Length(FreeGeneratorsOfFpGroup(kfp)));
+  rels:=[];
+
+  head:=GeneratorsOfGroup(f){[1..frank]};
+  tail:=GeneratorsOfGroup(f){[Length(head)+1..Length(GeneratorsOfGroup(f))]};
+
+  # relators of kernel
+  for i in RelatorsOfFpGroup(kfp) do
+    Add(rels,MappedWord(i,FreeGeneratorsOfFpGroup(kfp),tail));
+  od;
+
+  # action on kernel
+  for i in [1..frank] do
+
+    for j in [1..Length(pcgs)] do
+      img:=hpcgs[j]^fpre[i];
+      img:=img![2];
+      Add(rels,tail[j]^head[i]/MappedWord(ImagesRepresentative(iso,img),
+        GeneratorsOfGroup(kfp),tail));
+    od;
+  od;
+
+  # tails
+  for i in RelatorsOfFpGroup(frange) do
+    img:=MappedWord(i,FreeGeneratorsOfFpGroup(frange),fpre)![2];
+
+    Add(rels,MappedWord(i,FreeGeneratorsOfFpGroup(frange),head)/
+      MappedWord(ImagesRepresentative(iso,img),
+        GeneratorsOfGroup(kfp),tail));
+  od;
+
+  f:=f/rels;
+  return f;
 end;
