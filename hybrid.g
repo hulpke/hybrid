@@ -167,6 +167,7 @@ end);
 
 BindGlobal("HybridGroupAutrace",function(fam,m,f)
   local i,mm;
+start1:=Runtime();
     if IsAssocWord(f) then
       f:=LetterRepAssocWord(f);
     fi;
@@ -187,6 +188,7 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
       else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
     od;
 #    if mm<>fail and m<>mm then Error("AUAU");fi;
+Print("Autrace:",Runtime()-start1,"\n");
     return m;
   end);
 
@@ -1380,7 +1382,7 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of,norsz;
+  xker,xkerw,addker,dowords,ffam,of,norsz,isorec;
 
   dowords:=ValueOption("dowords")<>false; # default to true
   if IsBound(G!.hybridbits) and (dowords=false or
@@ -1414,8 +1416,21 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   # take factor and its presentation
   if Size(factor)=Size(Source(fam!.fphom)) then
     iso:=fam!.fphom;
+    isorec:=rec(fphom:=iso,
+       apply:=x->ImagesRepresentative(iso,x));
   else
-    iso:=IsomorphismFpGroup(factor);
+    isorec:=ShallowCopy(ConfluentMonoidPresentationForGroup(factor));
+    iso:=isorec.fphom;
+    isorec.kb:=ReducedConfluentRewritingSystem(Range(isorec.monhom));
+    isorec.fam:=FamilyObj(One(Range(isorec.monhom)));
+    isorec.apply:=function(x)
+      x:=ReducedForm(isorec.kb,UnderlyingElement(
+        ImagesRepresentative(isorec.monhom,
+	  ImagesRepresentative(isorec.fphom,x))));
+      x:=ElementOfFpMonoid(isorec.fam,x);
+      x:=PreImagesRepresentative(isorec.monhom,x);
+      return x;
+    end;
   fi;
   fp:=Range(iso);
 
@@ -1468,7 +1483,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   for i in [1..Length(sel)] do
     if Size(sub)<norsz then
       j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
-        ImagesRepresentative(iso,top[i])),
+        #ImagesRepresentative(iso,top[i])),
+        isorec.apply(top[i])),
         FreeGeneratorsOfFpGroup(fp),map);
       addker(j);
       addker(gfg[sel[i]]^Order(top[i]));
@@ -1538,13 +1554,18 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
           ker:=sub,
+	  apply:=isorec.apply,
           factoriso:=iso);
   if dowords then
     j.freegens:=gfg;
     j.wordsfreps:=map;
-    j.freps:=List(map,
-      x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
     j.kerpcgs:=i[1];
+    sub:=List(map,
+      x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
+    # clean out kernel bits
+    sub:=List(sub,x->HybridGroupElement(fam,x![1],
+      SiftedPcElement(j.kerpcgs,x![2])));
+    j.freps:=sub;
     j.wordskerpcgs:=i[2];
   else
     j.freps:=map;
@@ -1800,12 +1821,28 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
 
 end;
 
+BindGlobal("HybhomCachedProduct",function(hom,l)
+local p,w,i;
+  p:=PositionSorted(hom!.wordcache,Immutable([l]));
+  if p<=Length(hom!.wordcache) and hom!.wordcache[p][1]=l then
+    return hom!.wordcache[p][2];
+  fi;
+  p:=hom!.topho[3];
+  w:=One(p[1]);
+  for i in l do
+    if i>0 then w:=w*p[i];
+    else w:=w/p[-i];fi;
+  od;
+  AddSet(hom!.wordcache,Immutable([l,w]));
+  return w;
+end);
+
 InstallMethod(ImagesRepresentative,"hybrid",FamSourceEqFamElm,
   [IsGroupGeneralMappingByImages,
     IsMultiplicativeElementWithInverse and IsHybridGroupElementDefaultRep],0,
 function(hom,elm)
 local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
-      pcgs,sortfun,e,ro,i,nn,ao,pres,gens,prevs,rw,ri;
+      pcgs,sortfun,e,ro,i,nn,ao,pres,gens,prevs,rw,ri,split,lim;
 
 #Error("Imgrep");
   mgi:=MappingGeneratorsImages(hom);
@@ -1846,7 +1883,8 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
       Range(hom),hb.kerpcgs,pchom);
 
     topho:=[hb.factoriso,GeneratorsOfGroup(Range(hb.factoriso)),hb.freps,
-            List(hb.wordsfreps,x->MappedWord(x,hb.freegens,mgi[2]))];
+            List(hb.wordsfreps,x->MappedWord(x,hb.freegens,mgi[2])),
+	    hb.apply];
 
     hom!.topho:=topho;
     hom!.underlyingpchom:=pchom;
@@ -2015,13 +2053,27 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
 
   r:=PreImagesRepresentative(fam!.fphom,
     ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),elm![1]));
-  r:=ImagesRepresentative(topho[1],r);
+  #r:=ImagesRepresentative(topho[1],r);
+  r:=topho[5](r);
 Print("RMI:",r,"\n");
+  if not IsBound(hom!.wordcache) then
+    hom!.wordcache:=[];
+    hom!.lenlim:=First([10,9..1],x->Length(topho[2])^x<5*10^4);
+  fi;
   if not IsBound(hom!.previouses) then hom!.previouses:=[]; fi;
   prevs:=hom!.previouses;
   i:=PositionProperty(prevs,x->x[1]=r);
   if i=fail then
-    rw:=MappedWord(Inverse(r),topho[2],topho[3]);
+    #rw:=MappedWord(Inverse(r),topho[2],topho[3]);
+    split:=LetterRepAssocWord(UnderlyingElement(Inverse(r)));
+    split:=List(
+      List([1..QuoInt(Length(split)+hom!.lenlim-1,hom!.lenlim)],
+	x->Intersection([1..Length(split)],
+	  [(x-1)*hom!.lenlim+1..x*hom!.lenlim])),
+	  x->split{x});
+    rw:=List(split,x->HybhomCachedProduct(hom,x));
+    rw:=Product(rw,One(Source(hom)));
+
     ri:=MappedWord(r,topho[2],topho[4]);
     Add(prevs,[r,rw,ri]);
     if Length(prevs)>20 then
