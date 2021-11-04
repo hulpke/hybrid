@@ -167,7 +167,7 @@ end);
 
 BindGlobal("HybridGroupAutrace",function(fam,m,f)
   local i,mm;
-start1:=Runtime();
+#start1:=Runtime();
     if IsAssocWord(f) then
       f:=LetterRepAssocWord(f);
     fi;
@@ -188,7 +188,7 @@ start1:=Runtime();
       else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
     od;
 #    if mm<>fail and m<>mm then Error("AUAU");fi;
-Print("Autrace:",Runtime()-start1,"\n");
+#Print("Autrace:",Runtime()-start1,"\n");
     return m;
   end);
 
@@ -451,7 +451,7 @@ local fam,h,t,a,yinv,rawinv,tz;
     #  else
     #    rawinv:=\*(rawinv,One(fam):notranslate);
     #    a:=(HybridGroupElement(fam,fam!.factorone,yinv![2])^Inverse(rawinv))*a;
-    #    Error("test this!");
+  #    Error("test this!");
     #  fi;
     #fi;
   fi;
@@ -460,6 +460,40 @@ local fam,h,t,a,yinv,rawinv,tz;
   fi;
   #if a<>x^y then Error("conjugation");fi;
   return a;
+end);
+
+InstallMethod(\^,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(b,a)
+local fam,c;
+  fam:=FamilyObj(a);
+  if IsOne(b![1]) then
+    if not IsOne(a![1]) then
+      if IsOne(a![2]) then
+        c:=a;
+      else
+        c:=HybridGroupElement(fam,a![1],fam!.normalone);
+      fi;
+      b:=b*c;
+    fi;
+    b:=b![2]; # front stays the same and cancels off
+    if not IsOne(a![2]) then
+      b:=b^a![2];
+    fi;
+    return HybridGroupElement(fam,fam!.factorone,b);
+  else
+    return Inverse(a)*b*a;
+  fi;
+end);
+
+InstallMethod(Comm,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(a,b)
+  if IsOne(a![1]) then
+    return Inverse(a)*a^b;
+  else
+    return Inverse(b)^a*b;
+  fi;
 end);
 
 HybridGroupCocycle:=function(arg)
@@ -1492,7 +1526,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   od;
 
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
-    and Size(sub)<norsz then
+    and Size(sub)<norsz and Size(factor)>1 then
 
     # short words
     j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},1000);
@@ -1544,9 +1578,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     # canonize
     i:=InducedPcgsByGeneratorsWithImages(FamilyPcgs(sub),
       List(ker,x->x![2]),kerw);
-    #Error("nuno");
-    
-    Print(List(kerw,Length)," vs ",List(i[2],Length),"\n");
+    #Print(List(kerw,Length)," vs ",List(i[2],Length),"\n");
   else
     i:=[CanonicalPcgsWrtFamilyPcgs(sub)];
   fi;
@@ -3304,3 +3336,76 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,frank,
   f:=f/rels;
   return f;
 end;
+
+InstallMethod(FittingFreeLiftSetup,"hybrid",
+  [IsGroup and IsHybridGroupElementCollection],0,
+function(g)
+local fam,b,geni,nat,dep,oc,iso,kb,mfam,pc,a,ser;
+  fam:=FamilyObj(One(g));
+  b:=HybridBits(g);
+  # is it the whole family?
+  if Size(b.factor)<>Size(fam!.factgrp) or Size(b.ker)<>Size(fam!.normal)
+    or Size(RadicalGroup(fam!.factgrp))>1 then
+    Print("Generic hybrid method does not work here\n");
+    TryNextMethod();
+  fi;
+  geni:=List(GeneratorsOfGroup(g),x->x![1]);
+  geni:=List(geni,x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp)));
+  #nat:=GroupGeneralMappingByImagesNC(g,fam!.factgrp,GeneratorsOfGroup(g),geni);
+  #SetIsMapping(nat,true);
+  kb:=ReducedConfluentRewritingSystem(Range(fam!.monhom));;
+  mfam:=FamilyObj(One(Range(fam!.monhom)));;
+  nat:=GroupHomomorphismByFunction(g,fam!.factgrp,
+    x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
+      GeneratorsOfGroup(fam!.factgrp)),false,
+    function(elm)
+    local w;
+      w:=ImagesRepresentative(fam!.fphom,elm);
+      w:=ImagesRepresentative(fam!.monhom,w);
+      w:=ReducedForm(kb,UnderlyingElement(w));
+      w:=ElementOfFpMonoid(mfam,w);
+      w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
+      return HybridGroupElement(fam,w,fam!.normalone);
+    end);
+
+  SetMappingGeneratorsImages(nat,[GeneratorsOfGroup(g),geni]);
+
+  oc:=b.kerpcgs;
+  pc:=List(oc,x->HybridGroupElement(fam,fam!.factorone,x));
+  a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
+    oc,List(pc,y->(y^x)![2])));
+  ser:=InvariantElementaryAbelianSeries(b.ker,a);
+  a:=List(ser,InducedPcgsWrtFamilyPcgs);
+  a:=List([2..Length(a)],x->a[x-1] mod a[x]);
+  if Concatenation(a)<>oc then
+    Error("not natural depths");
+  fi;
+  dep:=List(a,x->DepthOfPcElement(FamilyPcgs(b.ker),x[1]));
+  Add(dep,Length(pc)+1);
+  pc:=PcgsByPcSequence(fam,pc);
+  SetRelativeOrders(pc,RelativeOrders(oc));
+  SetIndicesEANormalSteps(pc,dep);
+  pc!.underlying:=oc;
+  a:=SubgroupNC(g,pc);
+  SetKernelOfMultiplicativeGeneralMapping(nat,a);
+
+  iso:=GroupHomomorphismByFunction(a,b.ker,
+      x->x![2],x->HybridGroupElement(fam,fam!.factorone,x));
+  iso!.sourcePcgs:=pc;
+  return rec(depths:=dep,
+    factorhom:=nat,
+    pcgs:=pc,
+    pcisom:=iso,
+    radical:=a);
+end);
+  
+InstallMethod( ExponentsOfPcElement, "hybrid", IsCollsElms,
+        [ IsPcgs and IsHybridGroupElementCollection, IsHybridGroupElement ], 0,
+function(pcgs,elm)
+  # is it in the kernel?
+  if not IsOne(elm![1]) or not IsBound(pcgs!.underlying) then 
+    TryNextMethod();
+  fi;
+  return ExponentsOfPcElement(pcgs!.underlying,elm![2]);
+end);
