@@ -1418,6 +1418,11 @@ HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   xker,xkerw,addker,dowords,ffam,of,norsz,isorec;
 
+  if HasSize(G) then 
+    sz:=Size(G);
+  else
+    sz:=fail;
+  fi;
   dowords:=ValueOption("dowords")<>false; # default to true
   if IsBound(G!.hybridbits) and (dowords=false or
     IsBound(G!.hybridbits.wordskerpcgs)) then
@@ -1437,6 +1442,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
   norsz:=Size(fam!.normal);
+  if sz=fail then sz:=norsz;
+  elif sz:=sz/Size(factor);fi;
 
   # calculate elements corresponding to fp generators
 
@@ -1519,7 +1526,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   # strip generators of group with representatives word and use powers.
   for i in [1..Length(sel)] do
-    if Size(sub)<norsz then
+    if Size(sub)<sz then
       j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
         #ImagesRepresentative(iso,top[i])),
         isorec.apply(top[i])),
@@ -1530,7 +1537,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   od;
 
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
-    and Size(sub)<norsz and Size(factor)>1 then
+    and Size(sub)<sz and Size(factor)>1 then
 
     # short words
     j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},1000);
@@ -1564,7 +1571,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   # now form normal closure
   i:=1;
-  while i<=Length(ker) and Size(sub)<norsz do
+  while i<=Length(ker) and Size(sub)<sz do
     for j in gfg do
       addker(kerw[i]^j);
     od;
