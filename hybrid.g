@@ -1452,6 +1452,10 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     iso:=fam!.fphom;
     isorec:=rec(fphom:=iso,
        apply:=x->ImagesRepresentative(iso,x));
+  elif true then
+    iso:=IsomorphismFpGroup(factor);
+    isorec:=rec(fphom:=iso,
+       apply:=x->ImagesRepresentative(iso,x));
   else
     isorec:=ShallowCopy(ConfluentMonoidPresentationForGroup(factor));
     iso:=isorec.fphom;
@@ -1605,6 +1609,29 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   G!.hybridbits:=j;
   return j;
 end;
+
+InstallMethod(\in,"hybrid group",IsElmsColls,
+  [IsHybridGroupElement,IsGroup],0,
+function(elm,g)
+local fam,bits,elq;
+  fam:=FamilyObj(elm);
+  if IsIdenticalObj(g,fam!.wholeGroup) or HasSize(g) and
+    Size(g)=fam!.wholeSize then
+    return true;
+  fi;
+  bits:=HybridBits(g);
+  elq:=MappedWord(elm![1],
+    GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp));
+  if not elq in bits.factor then return false;fi;
+  elq:=ImagesRepresentative(bits.factoriso,elq);
+  elq:=MappedWord(elq,GeneratorsOfGroup(Range(bits.factoriso)),
+    bits.freps);
+  elm:=elm/elq;
+  if not IsOne(elm![1]) then Error("weird!");fi;
+  return IsOne(SiftedPcElement(CanonicalPcgs(bits.kerpcgs),elm![2]));
+  #TryNextMethod();
+end);
 
 OwnHybrid:=function(G)
 local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
@@ -1876,7 +1903,6 @@ function(hom,elm)
 local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
       pcgs,sortfun,e,ro,i,nn,ao,pres,gens,prevs,rw,ri,split,lim;
 
-#Error("Imgrep");
   mgi:=MappingGeneratorsImages(hom);
   src:=Source(hom);
   fam:=FamilyObj(One(src));
@@ -3357,7 +3383,7 @@ local fam,b,geni,nat,dep,oc,iso,kb,mfam,pc,a,ser;
   kb:=ReducedConfluentRewritingSystem(Range(fam!.monhom));;
   mfam:=FamilyObj(One(Range(fam!.monhom)));;
   nat:=GroupHomomorphismByFunction(g,fam!.factgrp,
-    x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
+    x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
       GeneratorsOfGroup(fam!.factgrp)),false,
     function(elm)
     local w;
@@ -3387,7 +3413,7 @@ local fam,b,geni,nat,dep,oc,iso,kb,mfam,pc,a,ser;
   SetRelativeOrders(pc,RelativeOrders(oc));
   SetIndicesEANormalSteps(pc,dep);
   pc!.underlying:=oc;
-  a:=SubgroupNC(g,pc);
+  a:=SubgroupByPcgs(g,pc);
   SetKernelOfMultiplicativeGeneralMapping(nat,a);
 
   iso:=GroupHomomorphismByFunction(a,b.ker,
