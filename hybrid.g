@@ -1416,7 +1416,7 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of,norsz,isorec;
+  xker,xkerw,addker,dowords,ffam,of,sz,isorec;
 
   if HasSize(G) then 
     sz:=Size(G);
@@ -1441,9 +1441,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     GeneratorsOfGroup(fam!.presentation.group),
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
-  norsz:=Size(fam!.normal);
-  if sz=fail then sz:=norsz;
-  elif sz:=sz/Size(factor);fi;
+  if sz=fail then sz:=Size(fam!.normal);
+  else sz:=sz/Size(factor);fi;
 
   # calculate elements corresponding to fp generators
 
@@ -1482,6 +1481,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   if dowords then
     addker:=function(w)
     local img,i,part;
+      if Size(sub)=sz then return;fi; # not needed
       img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
       if not img![2] in sub then
         Add(ker,img);
@@ -1539,22 +1539,18 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
     and Size(sub)<sz and Size(factor)>1 then
 
-    # short words
-    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},1000);
-    for i in j[2] do
-      addker(i);
-    od;
-
     # presentation
     j:=IsomorphismFpGroupByGenerators(factor,top);
     j:=Range(j);
     for i in RelatorsOfFpGroup(j) do
-      i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
-      addker(i);
+      if Size(sub)<sz then
+        i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
+        addker(i);
+      fi;
     od;
   fi;
 
-  if dowords and IsBound(G!.originalFactor) then
+  if dowords and IsBound(G!.originalFactor) and Size(sub)<sz then
     of:=HybridBits(G!.originalFactor);
     for i in of.wordskerpcgs do
       addker(MappedWord(i,of.freegens,gfg));
@@ -1562,9 +1558,17 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
 
   # evaluate relators
-  if Size(sub)<norsz then
+  if Size(sub)<sz then
     for i in List(RelatorsOfFpGroup(fp),
                       x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
+      addker(i);
+    od;
+  fi;
+
+  # short words
+  if Size(sub)<sz and Length(sel)>0 then
+    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},100);
+    for i in j[2] do
       addker(i);
     od;
   fi;
@@ -1605,10 +1609,10 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     j.kerpcgs:=i[1];
     sub:=List(map,
       x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
-    # clean out kernel bits
-    sub:=List(sub,x->HybridGroupElement(fam,x![1],
-      SiftedPcElement(j.kerpcgs,x![2])));
     j.freps:=sub;
+    # clean out kernel bits
+    j.frepsfilter:=List(sub,x->HybridGroupElement(fam,x![1],
+      SiftedPcElement(j.kerpcgs,x![2])));
     j.wordskerpcgs:=i[2];
   else
     j.freps:=map;
@@ -2120,12 +2124,13 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),elm![1]));
   #r:=ImagesRepresentative(topho[1],r);
   r:=topho[5](r);
-Print("RMI:",r,"\n");
+#Print("RMI:",r,"\n");
   if not IsBound(hom!.wordcache) then
     hom!.wordcache:=[];
     hom!.lenlim:=First([10,9..1],x->Length(topho[2])^x<5*10^4);
   fi;
   if not IsBound(hom!.previouses) then hom!.previouses:=[]; fi;
+
   prevs:=hom!.previouses;
   i:=PositionProperty(prevs,x->x[1]=r);
   if i=fail then
@@ -2157,7 +2162,6 @@ Print("RMI:",r,"\n");
     fi;
   fi;
 
-  #a:=LeftQuotient(rw,elm);
   a:=rw*elm;
   a:=ri*ImagesRepresentative(pchom,a![2]);
 
@@ -3369,6 +3373,39 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,frank,
   f:=f/rels;
   return f;
 end;
+
+InstallMethod(SmallGeneratingSet,"hybrid",
+  [IsGroup and IsHybridGroupElementCollection],0,
+function(sub)
+local fam,a,b,l,p,hb,sr,e,i,img;
+  fam:=FamilyObj(One(sub));
+  a:=Filtered(GeneratorsOfGroup(sub),x->not IsOne(x![1]));
+  b:=ShallowCopy(a);
+  l:=Length(a);
+  p:=l;
+  hb:=HybridBits(sub);
+  sr:=TrivialSubgroup(hb.ker);
+  while Size(sr)<Size(hb.ker) do
+    e:=First(CanonicalPcgs(hb.kerpcgs),x->not x in sr);
+    sr:=ClosureGroup(sr,e);
+    e:=HybridGroupElement(fam,fam!.factorone,e);
+    Add(a,e);
+    Add(b,e);
+    while p<Length(b) do
+      p:=p+1;
+      e:=b[p];
+      for i in [1..l] do
+        img:=e^a[i];
+        if not img![2] in sr then
+          Add(b,img);
+          sr:=ClosureGroup(sr,img![2]);
+        fi;
+      od;
+    od;
+  od;
+  return a;
+end);
+
 
 InstallMethod(FittingFreeLiftSetup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
