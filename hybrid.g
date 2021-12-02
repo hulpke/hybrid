@@ -304,18 +304,10 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
     return m;
   end);
 
-InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
-  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
-function(a,b)
-local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
-      sta,cancel,xc;
+HybridOldMultRoutine:=function(a,b)
+local fam,xc,y,tzrules,starters,offset,x,has,p,sta,r,cancel,bd,popo,tail;
+
   fam:=FamilyObj(a);
-
-  if IsBound(fam!.quickermult) and fam!.quickermult<>fail
-    and not ValueOption("notranslate")=true then
-    return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
-  fi;
-
   xc:=a![1]*b![1]; # top product
   y:=HybridGroupAutrace(fam,a![2],b![1])*b![2]; #bottom product
 
@@ -385,6 +377,228 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   until has=false;
 
   x:=AssocWordByLetterRep(FamilyObj(fam!.factorone),x);
+  return [x,y];
+end;
+
+#MyVerify:=function(fam,top,bot)
+#local w,from,i,j;
+#  w:=One(fam!.wholeGroup);
+#  from:=1;
+#  for i in bot do
+#    for j in [from..i[1]] do
+#      w:=w*g.(top[j]);
+#    od;
+#    w:=w*HybridGroupElement(fam,fam!.factorone,i[2]);
+#    from:=i[1]+1;
+#  od;
+#  for j in [from..Length(top)] do
+#    w:=w*g.(top[j]);
+#  od;
+#  Print("Verify: ",w,"\n");
+#  return w;
+#end;
+
+InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(a,b)
+local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
+      sta,cancel,xc,addbot,bot,sweep,pto,diff,muss;
+
+  fam:=FamilyObj(a);
+
+  if IsBound(fam!.quickermult) and fam!.quickermult<>fail
+    and not ValueOption("notranslate")=true then
+    return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
+  fi;
+
+  x:=LetterRepAssocWord(a![1]*b![1]);
+  bot:=[]; # tail entries, *after* which position the tail bit happens.
+  addbot:=function(pos,val)
+  local p;
+#Print(bot,"\n");
+    p:=PositionSorted(bot,[pos]);
+    if p<=Length(bot) and bot[p][1]=pos then
+      val:=val*bot[p][2];
+      if IsOne(val) then
+        # cancellation -- kill
+        bot:=Concatenation(bot{[1..p-1]},bot{[p+1..Length(bot)]});
+        IsSSortedList(bot);
+      else
+        bot[p]:=Immutable([pos,val]);
+      fi;
+    else
+      AddSet(bot,Immutable([pos,val]));
+    fi;
+#p:=List(bot,x->x[1]); if Length(p)>Length(Set(p)) then Error("doup");fi;
+  end;
+
+  # move bottom elements out of range
+  sweep:=function(from,to)
+  local i,p,q,a;
+#Print("sweep ",from," : ",to," ",bot,"\n");
+    i:=1;
+    while i<=Length(bot) do
+      p:=bot[i][1];
+      if p<from then
+        i:=i+1;
+      elif p>=to then
+        i:=Length(bot)+1; # done, exit
+      else
+        # need to take out
+        a:=bot[i][2];
+        bot:=Concatenation(bot{[1..i-1]},bot{[i+1..Length(bot)]});
+        # bump into another? Now i is the ext
+        if i<=Length(bot) and bot[i][1]<to then
+          q:=bot[i][1];
+        else
+          q:=to;
+        fi;
+        # move and enter, possibly changing next entry
+#Error("weep");
+        a:=HybridGroupAutrace(fam,a,x{[p+1..q]});
+        addbot(q,a);
+        # no i increment needed, as we deleted current one
+      fi;
+    od;
+#    Print("endsweep ",bot,"\n");
+  end;
+
+  if not IsOne(b![2]) then
+    # do this first, since addbot moves in from the left
+    addbot(Length(x),b![2]);
+  fi;
+  if not IsOne(a![2]) then
+    if Length(x)=Length(a![1])+Length(b![1]) then
+      # no cancellation -- just enter
+      addbot(Length(a![1]),a![2]);
+    else
+      # move tail past b first, so it is out of the way of cancellation
+      addbot(Length(x),HybridGroupAutrace(fam,a![2],b![1]));
+    fi;
+  fi;
+
+#if ValueOption("old")<>true then muss:=\*(a,b:old);fi;
+#if ValueOption("old")<>true and muss<>MyVerify(fam,x,bot:old) then
+#Error("PHO");fi;
+#Error(x,bot,"\n");
+
+  tzrules:=fam!.tzrules;
+  starters:=tzrules.starters;
+  offset:=tzrules.offset;
+  tzrules:=tzrules.tzrules;
+  # collect from the left
+
+  repeat
+    has:=false;
+    p:=1;
+    while p<=Length(x) do
+      sta:=starters[x[p]+offset];
+      r:=1;
+      while r<=Length(sta) do
+        if Length(sta[r,1])+p-1<=Length(x)
+          # shortcut test for rest
+          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
+          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
+
+          # now we apply a rule
+
+          pto:=p+Length(sta[r,1])-1;
+          sweep(p-1,pto); # move out letters in the way
+
+          # change stored indices as needed
+          diff:=Length(sta[r][2])-Length(sta[r][1]);
+#Print("Rule ",sta[r],diff,"\n");
+          if diff<>0 then
+#Print("oldbot",bot,"\n");
+
+            i:=1;
+            while i<=Length(bot) do
+              if bot[i][1]>=pto then
+                bot[i]:=Immutable([bot[i][1]+diff,bot[i][2]]);
+                # collision?
+                if i>1 and bot[i][1]=bot[i-1][1] then
+                  bd:=[bot[i][1],bot[i-1][2]*bot[i][2]];
+                  bot:=Concatenation(bot{[1..i-2]},bot{[i+1..Length(bot)]});
+                  addbot(bd[1],bd[2]);
+                  i:=i-1;
+                fi;
+              fi;
+              i:=i+1;
+            od;
+#Print("newbot",bot,"\n");
+#i:=List(bot,x->x[1]); if Length(i)>Length(Set(i)) then Error("doup2");fi;
+
+          fi;
+
+          tail:=x{[pto+1..Length(x)]};
+          # do free cancellation, which does not involve tails
+          cancel:=0;
+          bd:=Length(sta[r,2]);if p-1<bd then bd:=p-1;fi;
+          while cancel<bd and x[p-1-cancel]=-sta[r,2][1+cancel] do
+            cancel:=cancel+1;
+          od;
+          if cancel>0 then
+            Error("cancellation 1 -- not yet done");
+            x:=Concatenation(x{[1..p-1-cancel]},
+              sta[r,2]{[cancel+1..Length(sta[r,2])]});
+          else
+            x:=Concatenation(x{[1..p-1]},sta[r,2]);
+          fi;
+
+          popo:=Position(fam!.presentation.monrulpos,sta[r,3]);
+          if popo<>fail and not IsOne(fam!.tails[popo]) then
+            # store tail
+#Print("tail ",x,fam!.tails[popo],"\n");
+            addbot(Length(x),fam!.tails[popo]);
+          fi;
+
+          # do free cancellation, which does not involve tails
+          cancel:=0;
+          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
+          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
+            cancel:=cancel+1;
+          od;
+          if cancel>0 then
+            Error("cancellation 2 -- not yet done");
+            x:=Concatenation(x{[1..Length(x)-cancel]},
+              tail{[cancel+1..Length(tail)]});
+          else
+            x:=Concatenation(x,tail);
+          fi;
+#if ForAny(bot,k->k[1]>Length(x)+1) then Error("PUHX");fi;
+
+          p:=0; # as +1 is at end of loop
+          has:=true;
+          r:=Length(sta); # to exit sta loop
+
+#if ValueOption("old")<>true then
+#  Print(">\n");
+#  if muss<>MyVerify(fam,x,bot:old) then Error("PHO");#else Print("OHP\n");
+#  fi;fi;
+
+#Error(x,bot,"\n");
+        fi;
+        r:=r+1;
+      od;
+      p:=p+1;
+    od;
+  until has=false;
+#Error("@",x,bot,"\n");
+  sweep(0,Length(x)); # clean out all
+
+  if Length(bot)>0 then
+    if Length(bot)>1 then Error("sweeps?");fi;
+    y:=bot[1][2];
+  else
+    y:=fam!.normalone;
+  fi;
+
+  x:=AssocWordByLetterRep(FamilyObj(fam!.factorone),x);
+
+#p:=HybridOldMultRoutine(a,b);
+#if ValueOption("old")=true then
+#  x:=p[1];y:=p[2];
+#elif x<>p[1] or y<>p[2] then Error("arithmetic error");x:=p[1];y:=p[2];fi;
 
   x:=HybridGroupElement(fam,x,y);
 
