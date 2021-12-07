@@ -33,8 +33,20 @@ fi;
 DeclareRepresentation("IsHybridGroupElementDefaultRep",
   IsPositionalObjectRep and IsHybridGroupElement,[]);
 
+HybridGroupRuleIndex:=function(tzr,rule,s)
+local l;
+  l:=Length(rule);
+  if s>l then
+    return tzr.offset;
+  elif s=l then
+    return (rule[s]+tzr.offset)*tzr.doboff+tzr.offset;
+  else
+    return (rule[s]+tzr.offset)*tzr.doboff+tzr.offset+rule[s+1];
+  fi;
+end;
+
 TranslatedMonoidRules:=function(monhom)
-local fam,t,r,i,offset;
+local fam,t,r,i,offset,deadend,dag,tt,w,a,j;
   fam:=FamilyObj(One(Range(monhom)));
   t:=List(RelationsOfFpMonoid(Range(monhom)),r->List(r,e->
     UnderlyingElement(PreImagesRepresentative(monhom,
@@ -42,25 +54,52 @@ local fam,t,r,i,offset;
 
   t:=List(t,x->List(x,LetterRepAssocWord));
   offset:=1+Length(GeneratorsOfGroup(Source(monhom)));
+
   r:=rec(tzrules:=t,
          offset:=offset,
-         starters:=List([-offset+1..offset+1],x->[]),
+         doboff:=2*offset,
+         starters:=List([1..4*offset^2],x->[]),
          freegens:=FreeGeneratorsOfFpMonoid(Range(monhom)),
          monhom:=monhom,
          monrules:=RelationsOfFpMonoid(Range(monhom)));
   for i in [1..Length(t)] do
     if Length(t[i,1])>0 then
-      Add(r.starters[t[i,1][1]+offset],[t[i,1],t[i,2],i]);
+      #Add(r.starters[t[i,1][1]+offset],[t[i,1],t[i,2],i]);
+      Add(r.starters[HybridGroupRuleIndex(r,t[i,1],1)],[t[i,1],t[i,2],i]);
     fi;
   od;
-  #for i in [-offset+1..offset-1] do
-  #  r.starters[i+offset]:=Filtered(t,x->Length(x[1])>0 and x[1][1]=i);
-  #od;
+
+  # construct a DAG for storing the rules
+  # this assumes the rule set is reduced, i.e. no LHS is in another
+  deadend:=ListWithIdenticalEntries(2*offset-1,fail);
+  dag:=ShallowCopy(deadend);
+  for i in [1..Length(t)] do
+    tt:=t[i,1];
+    w:=dag;
+    for j in [1..Length(tt)] do
+      a:=tt[j]+offset;
+      if w[a]=fail then
+        if j=Length(tt) then
+          # store
+          w[a]:=i;
+        else
+          w[a]:=ShallowCopy(deadend); # at least one symbol more
+          w:=w[a];
+        fi;
+      elif IsList(w[a]) then w:=w[a]; # go to next letter
+      else
+        Error("rule subset of rule");
+      fi;
+    od;
+  od;
+  r.dag:=dag;
+
   return r;
 end;
 
 HybridGroupElement:=function(fam,top,bottom)
-  return Objectify(fam!.defaultType,[top,bottom,false,false]);
+  # 3: inverse, 4: quickermult, 5: topinverse
+  return Objectify(fam!.defaultType,[top,bottom,false,false,false]);
 end;
 
 InstallMethod(PrintObj,"hybrid group elements",
@@ -86,20 +125,132 @@ InstallMethod(One,"hybrid group elements",
   [IsHybridGroupElementDefaultRep],0,
   elm->One(FamilyObj(elm)));
 
+#InstallMethod(InverseOp,"hybrid group elements",
+#  [IsHybridGroupElementDefaultRep],0,
+#function(elm)
+#local fam,inv,prd;
+#  #cache inverses
+#  if elm![3]<>false then
+#    return elm![3];
+#  else
+#    fam:=FamilyObj(elm);
+#     if IsBound(fam!.quickermult) and fam!.quickermult<>fail
+#        and not ValueOption("notranslate")=true then
+#      inv:=fam!.backtranslate(fam!.quickermult(elm)^-1);
+#    else
+#
+#      # calculate a^-1*junk
+#      # the collection is guaranteed to happen in the product routine
+#      inv:=\*(HybridGroupElement(fam,InverseOp(elm![1]),fam!.normalone),
+#        One(fam):notranslate);
+#      # form (a,b)*(a^-1,1)=(1,c), then (a,b)^-1=(a^-1,c^-1)
+#      prd:=elm*inv;
+#      inv:=inv*HybridGroupElement(fam,fam!.factorone,InverseOp(prd![2]));
+#      #if not IsOne(inv*elm) then Error("invbug");fi;
+#    fi;
+#
+#    elm![3]:=inv;
+#    return inv;
+#  fi;
+#
+#end);
+
+#  fam:=FamilyObj(a);
+#  d:=HybridGroupElement(fam,a![1],fam!.normalone);
+#  c:=HybridTopInverse(a)*(HybridGroupElement(fam,b![1],fam!.normalone)*d);
+#  d:=HybridGroupElement(fam,fam!.factorone,b![2])*d;
+#  c:=HybridGroupElement(fam,fam!.factorone,Inverse(a![2]))*(c*HybridGroupElement(fam,fam!.factorone,a![2]*(d![2]^a![2])));
+#  return c;
+
+
+BindGlobal("HybridTopInverse",function(elm)
+local fam,inv,junk,let,i,j,ran,invs,prd,inliste,pos,wfam;
+  if IsBound(elm![5]) and IsHybridGroupElement(elm![5]) then return elm![5];fi;
+  fam:=FamilyObj(elm);
+  if not IsBound(fam!.wrdinvs) then
+    ran:=[1..Length(GeneratorsOfGroup(fam!.presentation.group))];
+    wfam:=FamilyObj(One(fam!.presentation.group));
+    # seed inverse list with length 1 (even do inverses, so they are there)
+    invs:=[];
+    for i in ran do
+      for j in [i,-i] do
+        let:=HybridGroupElement(fam,
+          AssocWordByLetterRep(wfam,[j]),fam!.normalone);
+        inv:=\*(HybridGroupElement(fam,InverseOp(let![1]),fam!.normalone),
+          One(fam):notranslate);
+        junk:=HybridGroupElement(fam,let![1],fam!.normalone)*inv;
+        AddSet(invs,Immutable([[j],
+          HybridGroupElement(fam,inv![1],inv![2]/junk![2])]));
+      od;
+    od;
+    fam!.wrdinvs:=rec(ran:=ran,invs:=invs);
+  else
+    ran:=fam!.wrdinvs.ran;
+    invs:=fam!.wrdinvs.invs;
+  fi;
+
+  # test and set position
+  inliste:=function(l)
+  local p;
+    p:=PositionSorted(invs,Immutable([l]));
+    if p>0 and p<=Length(invs) and invs[p][1]=l then
+      pos:=p;
+      return true;
+    else
+      return false;
+    fi;
+  end;
+
+  pos:=fail;
+  prd:=fail;
+  let:=LetterRepAssocWord(elm![1]);
+  i:=Length(let);
+  while i>0 do
+    # largest stored Endst"uck
+    j:=0;
+    while i-j>0 and inliste(let{[i-j..i]}) do
+      j:=j+1;
+    od;
+    # shall we store one longer?
+    if i-j-1>0 and j<4 and Length(invs)<10000 then
+      inv:=invs[pos][2]*invs[PositionSorted(invs,[let{[i-j]}])][2];
+      AddSet(invs,Immutable([let{[i-j..i]},inv]));
+      inliste(let{[i-j..i]});
+      j:=j+1;
+    fi;
+
+    inv:=invs[pos][2];
+#Print(let{[i-j+1..i]},inv,"\n");
+    if prd=fail then
+      prd:=inv;
+    else
+      prd:=prd*inv;
+    fi;
+    i:=i-j;
+  od;
+  elm![5]:=prd;
+  return prd;
+
+end);
+
 InstallMethod(InverseOp,"hybrid group elements",
   [IsHybridGroupElementDefaultRep],0,
 function(elm)
 local fam,inv,prd;
+  fam:=FamilyObj(elm);
   #cache inverses
   if elm![3]<>false then
     return elm![3];
-  else
-    fam:=FamilyObj(elm);
+  elif IsOne(elm![1]) then
+    inv:=HybridGroupElement(fam,fam!.factorone,Inverse(elm![2]));
+  # keep the old code in fopr debugging purposes
+  elif false then
      if IsBound(fam!.quickermult) and fam!.quickermult<>fail
         and not ValueOption("notranslate")=true then
       inv:=fam!.backtranslate(fam!.quickermult(elm)^-1);
     else
 
+      # calculate a^-1*junk
       # the collection is guaranteed to happen in the product routine
       inv:=\*(HybridGroupElement(fam,InverseOp(elm![1]),fam!.normalone),
         One(fam):notranslate);
@@ -109,9 +260,12 @@ local fam,inv,prd;
       #if not IsOne(inv*elm) then Error("invbug");fi;
     fi;
 
-    elm![3]:=inv;
-    return inv;
+  else
+    inv:=HybridGroupElement(fam,fam!.factorone,Inverse(elm![2]))
+      *HybridTopInverse(elm);
   fi;
+  elm![3]:=inv;
+  return inv;
 
 end);
 
@@ -167,6 +321,7 @@ end);
 
 BindGlobal("HybridGroupAutrace",function(fam,m,f)
   local i,mm;
+#start1:=Runtime();
     if IsAssocWord(f) then
       f:=LetterRepAssocWord(f);
     fi;
@@ -179,66 +334,40 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
       od;
       mm:=PcElementByExponents(fam!.autspcgs,List(mm,Int));
       return mm;
-#    else 
-#      mm:=fail;
     fi;
     for i in f do
       if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
       else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
     od;
-#    if mm<>fail and m<>mm then Error("AUAU");fi;
     return m;
   end);
 
-InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
-  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
-function(a,b)
-local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
-      sta,cancel,xc;
+HybridOldMultRoutine:=function(a,b)
+local fam,xc,y,tzrec,tzrules,starters,offset,x,has,p,sta,r,cancel,bd,popo,tail;
+
   fam:=FamilyObj(a);
-
-  if IsBound(fam!.quickermult) and fam!.quickermult<>fail
-    and not ValueOption("notranslate")=true then
-    return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
-  fi;
-
-#  autrace:=function(m,f)
-#  local i;
-#    if IsAssocWord(f) then
-#      f:=LetterRepAssocWord(f);
-#    fi;
-#    for i in f do
-#      if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
-#      else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
-#    od;
-#    return m;
-#  end;
-
   xc:=a![1]*b![1]; # top product
   y:=HybridGroupAutrace(fam,a![2],b![1])*b![2]; #bottom product
 
   # now reduce x with rules
 
-  tzrules:=fam!.tzrules;
-  starters:=tzrules.starters;
-  offset:=tzrules.offset;
-  tzrules:=tzrules.tzrules;
+  tzrec:=fam!.tzrules;
+  starters:=tzrec.starters;
+  offset:=tzrec.offset;
+  tzrules:=tzrec.tzrules;
   x:=LetterRepAssocWord(xc);
   # collect from the left
 
-#lc:=0;
   repeat
     has:=false;
     p:=1;
     while p<=Length(x) do
-      sta:=starters[x[p]+offset];
+      sta:=starters[HybridGroupRuleIndex(tzrec,x,p)];
       r:=1;
       while r<=Length(sta) do
         if Length(sta[r,1])+p-1<=Length(x)
-          # shortcut test for rest
-          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
+          # shortcut test for rest -- know first two work
           and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
-#lc:=lc+1;
 
           tail:=x{[p+Length(sta[r,1])..Length(x)]};
           # do free cancellation, which does not involve tails
@@ -273,7 +402,6 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
           else
             x:=Concatenation(x,tail);
           fi;
-#Print("rewl ",x,",",r,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
 
           p:=0; # as +1 is next
           has:=true;
@@ -284,106 +412,240 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
       p:=p+1;
     od;
   until has=false;
-#  xl:=x;
-#
-#rc:=0;
-#  # check from right
-#  x:=LetterRepAssocWord(xc);
-#  repeat
-#    has:=false;
-#    # collect from the right
-#    p:=Length(x);
-#    while p>=1 and Length(x)>0 do
-#      sta:=starters[x[p]+offset];
-#      r:=1;
-#      while r<=Length(sta) do
-#  #if sta[r,1][1]<>x[p] then Error("bla");fi;
-#        if Length(sta[r,1])+p-1<=Length(x)
-#  #and sta[r,1][1]=x[p] 
-#          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
-#          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
-#rc:=rc+1;
-#
-#          tail:=x{[p+Length(sta[r,1])..Length(x)]};
-#          #x:=Subword(x,1,p-1)*rules[r,2];
-#          # do free cancellation, which does not involve tails
-#          cancel:=0;
-#          bd:=Length(sta[r,2]);if p-1<bd then bd:=p-1;fi;
-#          while cancel<bd and x[p-1-cancel]=-sta[r,2][1+cancel] do
-#            cancel:=cancel+1;
-#          od;
-#          if cancel>0 then
-#            x:=Concatenation(x{[1..p-1-cancel]},
-#              sta[r,2]{[cancel+1..Length(sta[r,2])]});
-#          else
-#            x:=Concatenation(x{[1..p-1]},sta[r,2]);
-#          fi;
-#
-#          popo:=Position(fam!.presentation.monrulpos,sta[r,3]);
-#          if popo<>fail and not IsOne(fam!.tails[popo]) then
-#            #pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
-#            #    ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
-##            y:=HybridGroupAutrace(fam,fam!.tails[popo],tail)*y;
-#          fi;
-#          #x:=x*tail;
-#          # do free cancellation, which does not involve tails
-#          cancel:=0;
-#          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
-#          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
-#            cancel:=cancel+1;
-#          od;
-#          if cancel>0 then
-#            x:=Concatenation(x{[1..Length(x)-cancel]},
-#              tail{[cancel+1..Length(tail)]});
-#          else
-#            x:=Concatenation(x,tail);
-#          fi;
-##Print("rewr ",x,",",r,"@",p,"->",Minimum(Length(x)+1,p+Length(sta[r,2])),"\n");
-#
-#          # reset position to last where something new could happen
-#          p:=Minimum(Length(x)+1,p+Length(sta[r,2])); # -1 will happen immediately after this
-#          p:=Length(x);
-#          r:=Length(sta);
-#          has:=true;
-#        fi;
-#        r:=r+1;
-#      od;
-#      p:=p-1;
-#    od;
-#  until has=false;
-#
-#Print("Left: ",lc,"\n");
-#  if x<>xl then Error("collection error");fi;
 
   x:=AssocWordByLetterRep(FamilyObj(fam!.factorone),x);
-#  if not IsOne(MappedWord(a![1]*b![1]/x,GeneratorsOfGroup(fam!.presentation.group),GeneratorsOfGroup(fam!.factgrp)))
-#  then
-#    Error(a![1]," * ",b![1]," = ",x);
-#  fi;
+  return [x,y];
+end;
 
-#  rules:=RelationsOfFpMonoid(Range(fam!.monhom));
-#  repeat
-#    has:=false;
-#
-#    for r in [1..Length(rules)] do
-#      p:=PositionWord(x,rules[r,1]);
-#      if p<>fail then
-#        tail:=Subword(x,p+Length(rules[r,1]),Length(x));
-#        x:=Subword(x,1,p-1)*rules[r,2];
-#        popo:=Position(fam!.presentation.monrulpos,r);
-#        if popo<>fail and not IsOne(fam!.tails[popo]) then
-#          pretail:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
-#              ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),tail)));
-#          Error("bla");
-#          y:=HybridGroupAutrace(fam,fam!.tails[popo],pretail)*y;
-#        fi;
-#        x:=x*tail;
-#        has:=true;
-#      fi;
+#MyVerify:=function(fam,top,bot)
+#local w,from,i,j;
+#  w:=One(fam!.wholeGroup);
+#  from:=1;
+#  for i in bot do
+#    for j in [from..i[1]] do
+#      w:=w*g.(top[j]);
 #    od;
-#  until has=false;
-  #x:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,
-  #  ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),x)));
+#    w:=w*HybridGroupElement(fam,fam!.factorone,i[2]);
+#    from:=i[1]+1;
+#  od;
+#  for j in [from..Length(top)] do
+#    w:=w*g.(top[j]);
+#  od;
+#  Print("Verify: ",w,"\n");
+#  return w;
+#end;
+
+InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(a,b)
+local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
+      dag,sta,cancel,xc,addbot,bot,sweep,pto,diff,muss,w,q;
+
+  fam:=FamilyObj(a);
+
+  if IsBound(fam!.quickermult) and fam!.quickermult<>fail
+    and not ValueOption("notranslate")=true then
+    return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
+  fi;
+
+  x:=LetterRepAssocWord(a![1]*b![1]);
+  bot:=[]; # tail entries, *after* which position the tail bit happens.
+  addbot:=function(pos,val)
+  local p;
+#Print(bot,"\n");
+    p:=PositionSorted(bot,[pos]);
+    if p<=Length(bot) and bot[p][1]=pos then
+      val:=val*bot[p][2];
+      if IsOne(val) then
+        # cancellation -- kill
+        bot:=Concatenation(bot{[1..p-1]},bot{[p+1..Length(bot)]});
+        IsSSortedList(bot);
+      else
+        bot[p]:=Immutable([pos,val]);
+      fi;
+    else
+      AddSet(bot,Immutable([pos,val]));
+    fi;
+#p:=List(bot,x->x[1]); if Length(p)>Length(Set(p)) then Error("doup");fi;
+  end;
+
+  # move bottom elements out of range
+  sweep:=function(from,to)
+  local i,p,q,a;
+#Print("sweep ",from," : ",to," ",bot,"\n");
+    i:=1;
+    while i<=Length(bot) do
+      p:=bot[i][1];
+      if p<from then
+        i:=i+1;
+      elif p>=to then
+        i:=Length(bot)+1; # done, exit
+      else
+        # need to take out
+        a:=bot[i][2];
+        bot:=Concatenation(bot{[1..i-1]},bot{[i+1..Length(bot)]});
+        # bump into another? Now i is the ext
+        if i<=Length(bot) and bot[i][1]<to then
+          q:=bot[i][1];
+        else
+          q:=to;
+        fi;
+        # move and enter, possibly changing next entry
+#Error("weep");
+        a:=HybridGroupAutrace(fam,a,x{[p+1..q]});
+        addbot(q,a);
+        # no i increment needed, as we deleted current one
+      fi;
+    od;
+#    Print("endsweep ",bot,"\n");
+  end;
+
+  if not IsOne(b![2]) then
+    # do this first, since addbot moves in from the left
+    addbot(Length(x),b![2]);
+  fi;
+  if not IsOne(a![2]) then
+    if Length(x)=Length(a![1])+Length(b![1]) then
+      # no cancellation -- just enter
+      addbot(Length(a![1]),a![2]);
+    else
+      # move tail past b first, so it is out of the way of cancellation
+      addbot(Length(x),HybridGroupAutrace(fam,a![2],b![1]));
+    fi;
+  fi;
+
+#if ValueOption("old")<>true then muss:=\*(a,b:old);fi;
+#if ValueOption("old")<>true and muss<>MyVerify(fam,x,bot:old) then
+#Error("PHO");fi;
+#Error(x,bot,"\n");
+
+  tzrec:=fam!.tzrules;
+  starters:=tzrec.starters;
+  offset:=tzrec.offset;
+  tzrules:=tzrec.tzrules;
+  dag:=tzrec.dag;
+
+  # collect from the left
+
+  repeat
+    has:=false;
+    p:=1;
+    while p<=Length(x) do
+      # find the rule applying at the position in the dag
+      w:=dag;
+      q:=p;
+      while IsList(w) and q<=Length(x) do
+        w:=w[x[q]+offset];
+        q:=q+1;
+      od;
+      if IsInt(w) then
+        sta:=tzrules[w];
+#      sta:=starters[HybridGroupRuleIndex(tzrec,x,p)];
+#      r:=1;
+#      while r<=Length(sta) do
+#        if Length(sta[r,1])+p-1<=Length(x)
+#          # shortcut test for rest -- know first two work
+#          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
+
+          # now we apply a rule
+
+          pto:=p+Length(sta[1])-1;
+          sweep(p-1,pto); # move out letters in the way
+
+          # change stored indices as needed
+          diff:=Length(sta[2])-Length(sta[1]);
+#Print("Rule ",sta,diff,"\n");
+          if diff<>0 then
+#Print("oldbot",bot,"\n");
+
+            i:=1;
+            while i<=Length(bot) do
+              if bot[i][1]>=pto then
+                bot[i]:=Immutable([bot[i][1]+diff,bot[i][2]]);
+                # collision?
+                if i>1 and bot[i][1]=bot[i-1][1] then
+                  bd:=[bot[i][1],bot[i-1][2]*bot[i][2]];
+                  bot:=Concatenation(bot{[1..i-2]},bot{[i+1..Length(bot)]});
+                  addbot(bd[1],bd[2]);
+                  i:=i-1;
+                fi;
+              fi;
+              i:=i+1;
+            od;
+#Print("newbot",bot,"\n");
+#i:=List(bot,x->x[1]); if Length(i)>Length(Set(i)) then Error("doup2");fi;
+
+          fi;
+
+          tail:=x{[pto+1..Length(x)]};
+          # do free cancellation, which does not involve tails
+          cancel:=0;
+          bd:=Length(sta[2]);if p-1<bd then bd:=p-1;fi;
+          while cancel<bd and x[p-1-cancel]=-sta[2][1+cancel] do
+            cancel:=cancel+1;
+          od;
+          if cancel>0 then
+            Error("cancellation 1 -- not yet done");
+            x:=Concatenation(x{[1..p-1-cancel]},
+              sta[2]{[cancel+1..Length(sta[2])]});
+          else
+            x:=Concatenation(x{[1..p-1]},sta[2]);
+          fi;
+
+          popo:=Position(fam!.presentation.monrulpos,w);
+          if popo<>fail and not IsOne(fam!.tails[popo]) then
+            # store tail
+#Print("tail ",x,fam!.tails[popo],"\n");
+            addbot(Length(x),fam!.tails[popo]);
+          fi;
+
+          # do free cancellation, which does not involve tails
+          cancel:=0;
+          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
+          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
+            cancel:=cancel+1;
+          od;
+          if cancel>0 then
+            Error("cancellation 2 -- not yet done");
+            x:=Concatenation(x{[1..Length(x)-cancel]},
+              tail{[cancel+1..Length(tail)]});
+          else
+            x:=Concatenation(x,tail);
+          fi;
+#if ForAny(bot,k->k[1]>Length(x)+1) then Error("PUHX");fi;
+
+          p:=0; # as +1 is at end of loop
+          has:=true;
+#          r:=Length(sta); # to exit sta loop
+
+#if ValueOption("old")<>true then
+#  Print(">\n");
+#  if muss<>MyVerify(fam,x,bot:old) then Error("PHO");#else Print("OHP\n");
+#  fi;fi;
+
+#Error(x,bot,"\n");
+        fi;
+#        r:=r+1;
+#      od;
+      p:=p+1;
+    od;
+  until has=false;
+#Error("@",x,bot,"\n");
+  sweep(0,Length(x)); # clean out all
+
+  if Length(bot)>0 then
+    if Length(bot)>1 then Error("sweeps?");fi;
+    y:=bot[1][2];
+  else
+    y:=fam!.normalone;
+  fi;
+
+  x:=AssocWordByLetterRep(FamilyObj(fam!.factorone),x);
+
+#p:=HybridOldMultRoutine(a,b);
+#if ValueOption("old")=true then
+#  x:=p[1];y:=p[2];
+#elif x<>p[1] or y<>p[2] then Error("arithmetic error");x:=p[1];y:=p[2];fi;
 
   x:=HybridGroupElement(fam,x,y);
 
@@ -436,28 +698,55 @@ local fam,h,t,a,yinv,rawinv,tz;
   if IsOne(h![1]) then
     a:=h;
   else
-    Print("four\n");
     yinv:=y^-1;
     a:=yinv*h*y;
-    #rawinv:=HybridGroupElement(fam,Inverse(y![1]),fam!.normalone);
-    #a:=\*(rawinv,h:notranslate)*y;
-    #if not IsOne(yinv![2]) then 
-    #  # Need to multiply from left with (1,yinv![2])^(y![1]^-1,1)^-1
-    #  if IsAbelian(fam!.normal) then
-    #    a:=HybridGroupElement(fam,fam!.factorone,
-    #      HybridGroupAutrace(fam,yinv![2],y![1]))*a;
-    #  else
-    #    rawinv:=\*(rawinv,One(fam):notranslate);
-    #    a:=(HybridGroupElement(fam,fam!.factorone,yinv![2])^Inverse(rawinv))*a;
-    #    Error("test this!");
-    #  fi;
-    #fi;
   fi;
   if t<>fail then
     a:=a*HybridGroupElement(fam,One(x![1]),HybridGroupAutrace(fam,t,y![1]));
   fi;
-  #if a<>x^y then Error("conjugation");fi;
   return a;
+end);
+
+TC:=function(a,b)
+local fam,ax,ay,bx,by,c;
+  fam:=FamilyObj(a);
+  ax:=HybridGroupElement(fam,a![1],fam!.normalone);
+  bx:=HybridGroupElement(fam,b![1],fam!.normalone);
+  ay:=HybridGroupElement(fam,fam!.factorone,a![2]);
+  #by:=HybridGroupElement(fam,fam!.factorone,b![2]);
+  c:=HybridGroupElement(fam,fam!.factorone,(ay*bx)![2]^b![2]);
+  return Inverse(b)*ax*b*c;
+end;
+
+InstallMethod(\^,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(b,a)
+local fam,c;
+  fam:=FamilyObj(a);
+  if IsOne(b![1]) then
+    if not IsOne(a![1]) then
+      if IsOne(a![2]) then
+        c:=a;
+      else
+        c:=HybridGroupElement(fam,a![1],fam!.normalone);
+      fi;
+      b:=b*c;
+    fi;
+    b:=b![2]; # front stays the same and cancels off
+    if not IsOne(a![2]) then
+      b:=b^a![2];
+    fi;
+    return HybridGroupElement(fam,fam!.factorone,b);
+  else
+    return Inverse(a)*b*a;
+  fi;
+end);
+
+InstallMethod(Comm,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(a,b)
+  # in experimenst this weird evaluation is faster
+  return Inverse(a)*(Inverse(b)*a)*b;
 end);
 
 HybridGroupCocycle:=function(arg)
@@ -517,11 +806,6 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   tails:=[];
   for i in [1..Length(r.presentation.relators)] do
 
-    #  new:=MappedWord(r.presentation.relators[i],ogens,gens{[1..n]});
-    #  for j in [1..dim] do
-    #    new:=new*gens[n+j]^Int(z[(i-1)*dim+j]);
-    #  od;
-    #  Add(rels,new);
     Add(tails,PcElementByExponents(pcgs,z{(i-1)*dim+[1..dim]}));
 
   od;
@@ -906,7 +1190,6 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
 
   fam!.quickermult:=function(a)
   local i,s,b,t,n,res;
-#if a![4]<>false then return a![4];fi;
     res:=[];
     b:=LetterRepAssocWord(a![1]);
     s:=1;
@@ -955,27 +1238,9 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
       fi;
     fi;
 
-    #Print(a," ~> ",b," ",res,"\n");
-#if fam!.backtranslate(b)<>a then Error("bobo!");
     a![4]:=b;
     return b;
   end;
-
-#  # test
-#  gens:=[];
-#  for i in GeneratorsOfGroup(fam!.presentation.group) do
-#    Add(gens,Objectify(fam!.defaultType,[i,fam!.normalone]));
-#  od;
-#  for i in npcgs do
-#    Add(gens,Objectify(fam!.defaultType,[fam!.factorone,i]));
-#  od;
-#
-#  for i in gens do
-#    for j in gens do
-#      elm:=i*j;
-#    od;
-#  od;
-
 
 end;
 
@@ -1104,18 +1369,10 @@ local module,gens,i,j,k,f,d,ad,adf,p,idx,m,vecs,ker,pcgs,aut,auts,prd,new,a,fam,
     for j in [1..Length(idx)] do
       a:=a*pcgs[(i-1)*ad*d+(j-1)*d+idx[j]];
     od;
-#if ForAny(fam!.tails,x->not IsOne(x)) then Error("tata");fi;
     adf:=UnderlyingElement(ImagesRepresentative(r.fphom,gens[i]));
-#    a:=HybridGroupElement(fam,adf,a);
-#    # multiplication by one forces collecting out wrong
-#    # inverses in fp rep
-#Print("a=",a,"\n");
     b:=MappedWord(adf,fgens,GeneratorsOfGroup(prd){[1..Length(fgens)]});
     b:=HybridGroupElement(fam,b![1],a);
-#Print("b=",b,"\n");
-#    Add(new,\*(a,One(a):notranslate));
     Add(new,b);
-#Print("converted to ",new[Length(new)],"\n");
   od;
 
   return Group(new);
@@ -1137,30 +1394,6 @@ local gens,g,ep,img;
   fi;
   return pres.reversewords;
 end;
-
-#HybridToppers:=function(G)
-#local map,fam,pres,gens,gp;
-#  fam:=FamilyObj(One(G));
-#  if not IsBound(G!.toppers) then
-#    #pres:=fam!.presentation;
-#    #gens:=List(pres.prewords,x->MappedWord(x,GeneratorsOfGroup(pres.group),
-#    #        GeneratorsOfGroup(fam!.factgrp))); # generators of factor we need
-#    gens:=List(GeneratorsOfGroup(G),x->PreImagesRepresentative(fam!.fphom,
-#        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-#
-#    if Size(fam!.factgrp)>10^6 or not IsPermGroup(fam!.factgrp) then
-#      map:=GroupGeneralMappingByImagesNC(fam!.factgrp,G,gens,GeneratorsOfGroup(G));
-#      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-#    else
-#      gp:=Group(gens,One(fam!.factgrp));
-#      map:=EpimorphismFromFreeGroup(gp);
-#      G!.toppers:=List(GeneratorsOfGroup(fam!.factgrp),
-#        x->MappedWord(Factorization(gp,x),
-#          MappingGeneratorsImages(map)[1],GeneratorsOfGroup(G)));
-#    fi;
-#  fi;
-#  return G!.toppers;
-#end;
 
 # this maybe should go into the library
 InstallMethod( InducedPcgsByGeneratorsWithImages, "words images",true,
@@ -1294,8 +1527,6 @@ function( pcgs, gens, imgs )
                     od;
                   od;
                 fi;
-#            else
-#              Print("Ignore ",uw,":",Length(u[2])," ",List(igs,x->Length(x[2])),"\n");
             fi;
         od;
     od;
@@ -1380,8 +1611,13 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of,norsz;
+  xker,xkerw,addker,dowords,ffam,of,sz,isorec;
 
+  if HasSize(G) then 
+    sz:=Size(G);
+  else
+    sz:=fail;
+  fi;
   dowords:=ValueOption("dowords")<>false; # default to true
   if IsBound(G!.hybridbits) and (dowords=false or
     IsBound(G!.hybridbits.wordskerpcgs)) then
@@ -1400,7 +1636,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     GeneratorsOfGroup(fam!.presentation.group),
     GeneratorsOfGroup(fam!.factgrp)));
   factor:=Group(top,One(fam!.factgrp));
-  norsz:=Size(fam!.normal);
+  if sz=fail then sz:=Size(fam!.normal);
+  else sz:=sz/Size(factor);fi;
 
   # calculate elements corresponding to fp generators
 
@@ -1414,14 +1651,32 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   # take factor and its presentation
   if Size(factor)=Size(Source(fam!.fphom)) then
     iso:=fam!.fphom;
-  else
+    isorec:=rec(fphom:=iso,
+       apply:=x->ImagesRepresentative(iso,x));
+  elif true then
     iso:=IsomorphismFpGroup(factor);
+    isorec:=rec(fphom:=iso,
+       apply:=x->ImagesRepresentative(iso,x));
+  else
+    isorec:=ShallowCopy(ConfluentMonoidPresentationForGroup(factor));
+    iso:=isorec.fphom;
+    isorec.kb:=ReducedConfluentRewritingSystem(Range(isorec.monhom));
+    isorec.fam:=FamilyObj(One(Range(isorec.monhom)));
+    isorec.apply:=function(x)
+      x:=ReducedForm(isorec.kb,UnderlyingElement(
+        ImagesRepresentative(isorec.monhom,
+	  ImagesRepresentative(isorec.fphom,x))));
+      x:=ElementOfFpMonoid(isorec.fam,x);
+      x:=PreImagesRepresentative(isorec.monhom,x);
+      return x;
+    end;
   fi;
   fp:=Range(iso);
 
   if dowords then
     addker:=function(w)
     local img,i,part;
+      if Size(sub)=sz then return;fi; # not needed
       img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
       if not img![2] in sub then
         Add(ker,img);
@@ -1466,9 +1721,10 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   # strip generators of group with representatives word and use powers.
   for i in [1..Length(sel)] do
-    if Size(sub)<norsz then
+    if Size(sub)<sz then
       j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
-        ImagesRepresentative(iso,top[i])),
+        #ImagesRepresentative(iso,top[i])),
+        isorec.apply(top[i])),
         FreeGeneratorsOfFpGroup(fp),map);
       addker(j);
       addker(gfg[sel[i]]^Order(top[i]));
@@ -1476,24 +1732,20 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   od;
 
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
-    and Size(sub)<norsz then
-
-    # short words
-    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},1000);
-    for i in j[2] do
-      addker(i);
-    od;
+    and Size(sub)<sz and Size(factor)>1 then
 
     # presentation
     j:=IsomorphismFpGroupByGenerators(factor,top);
     j:=Range(j);
     for i in RelatorsOfFpGroup(j) do
-      i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
-      addker(i);
+      if Size(sub)<sz then
+        i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
+        addker(i);
+      fi;
     od;
   fi;
 
-  if dowords and IsBound(G!.originalFactor) then
+  if dowords and IsBound(G!.originalFactor) and Size(sub)<sz then
     of:=HybridBits(G!.originalFactor);
     for i in of.wordskerpcgs do
       addker(MappedWord(i,of.freegens,gfg));
@@ -1501,16 +1753,24 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
 
   # evaluate relators
-  if Size(sub)<norsz then
+  if Size(sub)<sz then
     for i in List(RelatorsOfFpGroup(fp),
                       x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
       addker(i);
     od;
   fi;
 
+  # short words
+  if Size(sub)<sz and Length(sel)>0 then
+    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},100);
+    for i in j[2] do
+      addker(i);
+    od;
+  fi;
+
   # now form normal closure
   i:=1;
-  while i<=Length(ker) and Size(sub)<norsz do
+  while i<=Length(ker) and Size(sub)<sz do
     for j in gfg do
       addker(kerw[i]^j);
     od;
@@ -1528,9 +1788,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     # canonize
     i:=InducedPcgsByGeneratorsWithImages(FamilyPcgs(sub),
       List(ker,x->x![2]),kerw);
-    #Error("nuno");
-    
-    Print(List(kerw,Length)," vs ",List(i[2],Length),"\n");
+    #Print(List(kerw,Length)," vs ",List(i[2],Length),"\n");
   else
     i:=[CanonicalPcgsWrtFamilyPcgs(sub)];
   fi;
@@ -1538,13 +1796,18 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
           ker:=sub,
+	  apply:=isorec.apply,
           factoriso:=iso);
   if dowords then
     j.freegens:=gfg;
     j.wordsfreps:=map;
-    j.freps:=List(map,
-      x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
     j.kerpcgs:=i[1];
+    sub:=List(map,
+      x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
+    j.freps:=sub;
+    # clean out kernel bits
+    j.frepsfilter:=List(sub,x->HybridGroupElement(fam,x![1],
+      SiftedPcElement(j.kerpcgs,x![2])));
     j.wordskerpcgs:=i[2];
   else
     j.freps:=map;
@@ -1552,6 +1815,29 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   G!.hybridbits:=j;
   return j;
 end;
+
+InstallMethod(\in,"hybrid group",IsElmsColls,
+  [IsHybridGroupElement,IsGroup],0,
+function(elm,g)
+local fam,bits,elq;
+  fam:=FamilyObj(elm);
+  if IsIdenticalObj(g,fam!.wholeGroup) or HasSize(g) and
+    Size(g)=fam!.wholeSize then
+    return true;
+  fi;
+  bits:=HybridBits(g);
+  elq:=MappedWord(elm![1],
+    GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp));
+  if not elq in bits.factor then return false;fi;
+  elq:=ImagesRepresentative(bits.factoriso,elq);
+  elq:=MappedWord(elq,GeneratorsOfGroup(Range(bits.factoriso)),
+    bits.freps);
+  elm:=elm/elq;
+  if not IsOne(elm![1]) then Error("weird!");fi;
+  return IsOne(SiftedPcElement(CanonicalPcgs(bits.kerpcgs),elm![2]));
+  #TryNextMethod();
+end);
 
 OwnHybrid:=function(G)
 local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
@@ -1791,7 +2077,6 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
   i:=HybridBits(new); 
   if not ForAll(tails,x->x in i.ker) then 
     # tails could lie in d but not in kernel. If so, rebase
-#Error("A1");
     new:=OwnHybrid(new);
     ShadowHybrid(FamilyObj(One(new)));
   fi;
@@ -1800,14 +2085,29 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
 
 end;
 
+BindGlobal("HybhomCachedProduct",function(hom,l)
+local p,w,i;
+  p:=PositionSorted(hom!.wordcache,Immutable([l]));
+  if p<=Length(hom!.wordcache) and hom!.wordcache[p][1]=l then
+    return hom!.wordcache[p][2];
+  fi;
+  p:=hom!.topho[3];
+  w:=One(p[1]);
+  for i in l do
+    if i>0 then w:=w*p[i];
+    else w:=w/p[-i];fi;
+  od;
+  AddSet(hom!.wordcache,Immutable([l,w]));
+  return w;
+end);
+
 InstallMethod(ImagesRepresentative,"hybrid",FamSourceEqFamElm,
   [IsGroupGeneralMappingByImages,
     IsMultiplicativeElementWithInverse and IsHybridGroupElementDefaultRep],0,
 function(hom,elm)
 local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
-      pcgs,sortfun,e,ro,i,nn,ao,pres,gens,prevs,rw,ri;
+      pcgs,sortfun,e,ro,i,nn,ao,pres,gens,prevs,rw,ri,split,lim;
 
-#Error("Imgrep");
   mgi:=MappingGeneratorsImages(hom);
   src:=Source(hom);
   fam:=FamilyObj(One(src));
@@ -1846,162 +2146,11 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
       Range(hom),hb.kerpcgs,pchom);
 
     topho:=[hb.factoriso,GeneratorsOfGroup(Range(hb.factoriso)),hb.freps,
-            List(hb.wordsfreps,x->MappedWord(x,hb.freegens,mgi[2]))];
+            List(hb.wordsfreps,x->MappedWord(x,hb.freegens,mgi[2])),
+	    hb.apply];
 
     hom!.topho:=topho;
     hom!.underlyingpchom:=pchom;
-#  elif false then
-#    nn:=List([1..Length(mgi[1])],x->Tuple([mgi[1][x],mgi[2][x]]));
-#
-#    gens:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
-#        ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-#    map:=GroupGeneralMappingByImagesNC(fam!.factgrp,Group(nn),gens,nn);
-#    a:=List(GeneratorsOfGroup(fam!.factgrp),x->ImagesRepresentative(map,x));
-#    toppers:=List(a,x->x[1]);
-#    topi:=List(a,x->x[2]);
-#
-#    if not (IsPermGroup(fam!.factgrp) or IsPcGroup(fam!.factgrp)) then
-#      Error("cannot factor in factor group");
-#    fi;
-#
-#    # # need to go through words to ensure same image
-#    # map:=DoReverseWords(fam!.presentation,fam!.factgrp);
-#    # toppers:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[1]));
-#    # topi:=List(map[2],x->MappedWord(x,GeneratorsOfGroup(map[1]),mgi[2]));
-#    ker:=[];
-#
-#    for r in Filtered([1..Length(mgi[1])],x->IsOne(mgi[1][x]![1])) do
-#      Add(ker,[mgi[1][r],mgi[1][r]![2],mgi[2][r]]);
-#    od;
-#
-#    for r in fam!.presentation.relators do
-#      a:=MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),toppers);
-#      if not IsOne(a) then
-#        Add(ker,[a,a![2],
-#                MappedWord(r,GeneratorsOfGroup(fam!.presentation.group),topi)]);
-#      fi;
-#    od;
-#
-#    sub:=Group(List(ker,x->x[2]));
-#    if Size(sub)<Size(hb.ker) then
-#      # clean out generators top with toppers
-#      for r in [1..Length(mgi)] do
-#        a:=mgi{[1,2]}[r]; # gen and image
-#        e:=a[1]![1]; # top word
-#        a[1]:=LeftQuotient(
-#          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
-#            toppers),a[1]);
-#        a[2]:=LeftQuotient(
-#          MappedWord(e,GeneratorsOfGroup(fam!.presentation.group),
-#            topi),a[2]);
-#        if not a[1]![2] in sub then
-#          Add(ker,[a[1],a[1]![2],a[2]]);
-#          sub:=ClosureGroup(sub,a[1]![2]);
-#        fi;
-#      od;
-#    fi;
-#
-#    pcgs:=FamilyPcgs(hb.ker);
-#
-#
-#    if Size(hb.ker)>1 and (IsAssocWord(ker[1][3]) or IsElementOfFpGroup(ker[1][3])) then
-#      e:=3*Length(pcgs);
-#    else
-#      e:=0;
-#    fi;
-#    while Size(sub)<Size(hb.ker) or e>0 do
-#      repeat
-#        a:=[Random(ker),Random([1..Length(mgi[1])])];
-#        r:=a[1][1]^mgi[1][a[2]];
-#      until not r![2] in sub or Size(sub)=Size(hb.ker);
-#      Add(ker,[r,r![2],a[1][3]^mgi[2][a[2]]]);
-#      sub:=ClosureGroup(sub,r![2]);
-#      e:=e-1;
-#    od;
-#    a:=[[],[]];
-#    for r in ker do
-#      Add(a[1],r[2]);
-#      Add(a[2],r[3]);
-#    od;
-#
-#     ao:=List(a,ShallowCopy);
-#
-#    if Length(a[2])>0 and (IsAssocWord(a[2][1]) or IsElementOfFpGroup(a[2][1])) then
-#      # some pre-cleaning to get shorter word lengths
-#      # make pairs
-#      a:=List([1..Length(a[1])],x->[a[1][x],a[2][x]]);
-#      sortfun:=function(x,y)
-#        return DepthOfPcElement(pcgs,x[1])<DepthOfPcElement(pcgs,y[1]) or
-#          (DepthOfPcElement(pcgs,x[1])=DepthOfPcElement(pcgs,y[1]) and
-#          Length(x[2])<Length(y[2]));
-#        end;
-#      Sort(a,sortfun);
-#      while IsOne(a[Length(a)][1]) do a:=a{[1..Length(a)-1]};od;
-#
-#      # clean out
-#      r:=1;
-#      while r<Length(a) do
-#        if DepthOfPcElement(pcgs,a[r][1])=DepthOfPcElement(pcgs,a[r+1][1]) then
-#          ro:=RelativeOrders(pcgs)[DepthOfPcElement(pcgs,a[r][1])];
-#          e:=-LeadingExponentOfPcElement(pcgs,a[r+1][1])
-#            /LeadingExponentOfPcElement(pcgs,a[r][1]) mod ro;
-#          if 2*e>ro then e:=e-ro;fi;
-#          a[r+1]:=[a[r+1][1]*a[r][1]^e,a[r+1][2]*a[r][2]^e];
-#          Sort(a,sortfun);
-#          while IsOne(a[Length(a)][1]) do a:=a{[1..Length(a)-1]};od;
-#        else
-#          r:=r+1;
-#        fi;
-#      od;
-#
-#      # clean out (but keep old)
-#      topho:=ListWithIdenticalEntries(Length(pcgs),0);
-#      for r in [1..Length(a)] do
-#        topho[DepthOfPcElement(pcgs,a[r][1])]:=r;
-#      od;
-#
-#      r:=Length(a)-1;
-#      while r>0 do
-#        nn:=a[r];
-#        pre:=ExponentsOfPcElement(pcgs,nn[1]);
-#        for i in [PositionNonZero(pre)+1..Length(pre)] do
-#          if topho[i]<>0 then
-#            ro:=RelativeOrders(pcgs)[i];
-#            e:=-pre[i]/LeadingExponentOfPcElement(pcgs,a[topho[i]][1]) mod ro;
-#            if 2*e>ro then e:=e-ro;fi;
-#            nn:=[nn[1]*a[topho[i]][1]^e,nn[2]*a[topho[i]][2]^e];
-#            pre:=ExponentsOfPcElement(pcgs,nn[1]);
-#          fi;
-#        od;
-#        Add(a,nn);
-#
-#        r:=r-1;
-#      od;
-#
-#      # undo pairs
-#      a:=[a{[1..Length(a)]}[1],a{[1..Length(a)]}[2]];
-#
-#    fi;
-#
-#    pre:=GroupGeneralMappingByImagesNC(hb.ker,Range(hom),ao[1],ao[2]);
-#    pchom:=GroupGeneralMappingByImagesNC(hb.ker,Range(hom),a[1],a[2]);
-#
-#    if Length(a[2])>0 and (IsAssocWord(a[2][1]) or IsElementOfFpGroup(a[2][1])) then
-#  Print("max",Maximum(List(pre!.sourcePcgsImages,Length))," versus ",
-#        Maximum(List(pchom!.sourcePcgsImages,Length)),"\n");
-#
-#      if Sum(List(pre!.sourcePcgsImages,Length))
-#        <Sum(List(pchom!.sourcePcgsImages,Length)) then
-#        pchom:=pre;
-#      fi;
-#    fi;
-#
-#    pre:=List(mgi[1],x->PreImagesRepresentative(fam!.fphom,
-#      ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),x![1])));
-#
-#    topho:=EpimorphismFromFreeGroup(Group(pre));
-#    hom!.topho:=topho;
-#    hom!.underlyingpchom:=pchom;
   else
     pchom:=hom!.underlyingpchom;
     topho:=hom!.topho;
@@ -2015,13 +2164,27 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
 
   r:=PreImagesRepresentative(fam!.fphom,
     ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),elm![1]));
-  r:=ImagesRepresentative(topho[1],r);
-Print("RMI:",r,"\n");
+  #r:=ImagesRepresentative(topho[1],r);
+  r:=topho[5](r);
+  if not IsBound(hom!.wordcache) then
+    hom!.wordcache:=[];
+    hom!.lenlim:=First([10,9..1],x->Length(topho[2])^x<5*10^4);
+  fi;
   if not IsBound(hom!.previouses) then hom!.previouses:=[]; fi;
+
   prevs:=hom!.previouses;
   i:=PositionProperty(prevs,x->x[1]=r);
   if i=fail then
-    rw:=MappedWord(Inverse(r),topho[2],topho[3]);
+    #rw:=MappedWord(Inverse(r),topho[2],topho[3]);
+    split:=LetterRepAssocWord(UnderlyingElement(Inverse(r)));
+    split:=List(
+      List([1..QuoInt(Length(split)+hom!.lenlim-1,hom!.lenlim)],
+	x->Intersection([1..Length(split)],
+	  [(x-1)*hom!.lenlim+1..x*hom!.lenlim])),
+	  x->split{x});
+    rw:=List(split,x->HybhomCachedProduct(hom,x));
+    rw:=Product(rw,One(Source(hom)));
+
     ri:=MappedWord(r,topho[2],topho[4]);
     Add(prevs,[r,rw,ri]);
     if Length(prevs)>20 then
@@ -2040,7 +2203,6 @@ Print("RMI:",r,"\n");
     fi;
   fi;
 
-  #a:=LeftQuotient(rw,elm);
   a:=rw*elm;
   a:=ri*ImagesRepresentative(pchom,a![2]);
 
@@ -2300,87 +2462,10 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
   fmon,rules,mhead,mtail,kermon,img,nr,ord,w,k,tzrules,addrule,redwith,
   fphom,kb,invliv;
 
-#  redwith:=function(w,rule)
-#  local p;
-#    p:=PositionSublist(w,rule[1]);
-#    while p<>fail do
-#      w:=Concatenation(w{[1..p-1]},rule[2],w{[p+Length(rule[1])..Length(w)]});
-#      p:=PositionSublist(w,rule[1]);
-#    od;
-#    return w;
-#  end;
-
   addrule:=function(rul)
   local t;
     t:=List(rul,LetterRepAssocWord);
-    #Print("Add:",rul,"\n");
     AddRuleReduced(kb,t);
-#    if not t in kb!.tzrules then Error("discarded",rul,"\n"); fi;
-
-#  local t,ot,i,w,ch,lr,lrw,sel,stack;
-#    # reduce rule with existing
-#
-#    ot:=ShallowCopy(t);
-#    t:=[ReduceLetterRepWordsRewSys(tzrules,t[1]),ReduceLetterRepWordsRewSys(tzrules,t[2])];
-#
-#    if t[1]=t[2] then return; fi; # rule gone
-#    #if ch>0 then 
-#    if t<>ot then
-#      rul:=List(t,x->AssocWordByLetterRep(FamilyObj(rul[1]),x));
-#      if t[1]<>ot[1] and IsLessThanOrEqualUnder(ord,rul[1],rul[2]) then
-#        t:=Reversed(t);
-#        rul:=Reversed(rul);
-#      fi;
-#    fi;
-#
-#    # now reduce existing rules with new
-#    sel:=[1..Length(rules)];
-#    stack:=[];
-#    for i in [1..Length(rules)] do
-#      lr:=tzrules[i];
-#      lrw:=rules[i];
-#      ch:=0;
-#      w:=redwith(lr[2],t);
-#      if w<>lr[2] then
-#        if ch=0 then ch:=1;fi;
-#        lr[2]:=w;
-#        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
-#      fi;
-#      w:=redwith(lr[1],t);
-#      if w<>lr[1] then
-#        ch:=2;
-#        lr[1]:=w;
-#        lrw[2]:=AssocWordByLetterRep(FamilyObj(rul[1]),w);
-#      fi;
-#      if ch>0 then
-#        RemoveSet(sel,i);
-#        if lr[1]<>lr[2] then
-#          if ch=2 and IsLessThanOrEqualUnder(ord,lrw[1],lrw[2]) then
-#            lr:=Reversed(lr);
-#            lrw:=Reversed(lrw);
-#          fi;
-#          Add(stack,[lr,lrw]);
-#        fi;
-#      fi;
-#      
-#    od;
-#    if Length(sel)<Length(rules) then
-#      # Print("kill ",Length(rules)-Length(sel)," to ",Length(stack),"\n");
-#      rules:=rules{sel};
-#      tzrules:=tzrules{sel};
-#    fi;
-#
-#    Add(rules,rul);
-#    Add(tzrules,t);
-#
-#    if Length(stack)>0 then
-#      for i in stack do
-#        # delayed add of changed old rules. Will not cause problems as
-#        # stacks are only processed after new rule was added.
-#        addrule(i[2]);
-#      od;
-#    fi;
-#
   end;
 
   fam:=FamilyObj(One(h));
@@ -3054,16 +3139,6 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
 
 
   b:=FamilyObj(fp)!.wholeGroup;
-  #q:=GroupHomomorphismByImages(b,Image(q),GeneratorsOfGroup(b),
-  #   Concatenation(GeneratorsOfGroup(FamilyObj(One(cov))!.factgrp),ListWithIdenticalEntries(Length(kerpc),One(Range(q)))));
-  #if q=fail then 
-  #  Error("generator mishap");
-  #  q:=GroupHomomorphismByImages(fp,Image(q),
-  #    GeneratorsOfGroup(fp),MappingGeneratorsImages(q)[2]);
-  #fi;
-  ## data for permrep
-  #mo:=GModuleByMats(mo,GF(p));
-  #fp!.permrepdata:=[q,mo];
 
   b:=GroupHomomorphismByImagesNC(G,cov,GeneratorsOfGroup(G),GeneratorsOfGroup(cov));
   SetImagesSource(b,cov);
@@ -3252,3 +3327,109 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,frank,
   f:=f/rels;
   return f;
 end;
+
+InstallMethod(SmallGeneratingSet,"hybrid",
+  [IsGroup and IsHybridGroupElementCollection],0,
+function(sub)
+local fam,a,b,l,p,hb,sr,e,i,img;
+  fam:=FamilyObj(One(sub));
+  a:=Filtered(GeneratorsOfGroup(sub),x->not IsOne(x![1]));
+  b:=ShallowCopy(a);
+  l:=Length(a);
+  p:=l;
+  hb:=HybridBits(sub);
+  sr:=TrivialSubgroup(hb.ker);
+  while Size(sr)<Size(hb.ker) do
+    e:=First(CanonicalPcgs(hb.kerpcgs),x->not x in sr);
+    sr:=ClosureGroup(sr,e);
+    e:=HybridGroupElement(fam,fam!.factorone,e);
+    Add(a,e);
+    Add(b,e);
+    while p<Length(b) do
+      p:=p+1;
+      e:=b[p];
+      for i in [1..l] do
+        img:=e^a[i];
+        if not img![2] in sr then
+          Add(b,img);
+          sr:=ClosureGroup(sr,img![2]);
+        fi;
+      od;
+    od;
+  od;
+  return a;
+end);
+
+
+InstallMethod(FittingFreeLiftSetup,"hybrid",
+  [IsGroup and IsHybridGroupElementCollection],0,
+function(g)
+local fam,b,geni,nat,dep,oc,iso,kb,mfam,pc,a,ser;
+  fam:=FamilyObj(One(g));
+  b:=HybridBits(g);
+  # is it the whole family?
+  if Size(b.factor)<>Size(fam!.factgrp) or Size(b.ker)<>Size(fam!.normal)
+    or Size(RadicalGroup(fam!.factgrp))>1 then
+    Print("Generic hybrid method does not work here\n");
+    TryNextMethod();
+  fi;
+  geni:=List(GeneratorsOfGroup(g),x->x![1]);
+  geni:=List(geni,x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp)));
+  #nat:=GroupGeneralMappingByImagesNC(g,fam!.factgrp,GeneratorsOfGroup(g),geni);
+  #SetIsMapping(nat,true);
+  kb:=ReducedConfluentRewritingSystem(Range(fam!.monhom));;
+  mfam:=FamilyObj(One(Range(fam!.monhom)));;
+  nat:=GroupHomomorphismByFunction(g,fam!.factgrp,
+    x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
+      GeneratorsOfGroup(fam!.factgrp)),false,
+    function(elm)
+    local w;
+      w:=ImagesRepresentative(fam!.fphom,elm);
+      w:=ImagesRepresentative(fam!.monhom,w);
+      w:=ReducedForm(kb,UnderlyingElement(w));
+      w:=ElementOfFpMonoid(mfam,w);
+      w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
+      return HybridGroupElement(fam,w,fam!.normalone);
+    end);
+
+  SetMappingGeneratorsImages(nat,[GeneratorsOfGroup(g),geni]);
+
+  oc:=CanonicalPcgs(b.kerpcgs);
+  pc:=List(oc,x->HybridGroupElement(fam,fam!.factorone,x));
+  a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
+    oc,List(pc,y->(y^x)![2])));
+  ser:=InvariantElementaryAbelianSeries(b.ker,a);
+  a:=List(ser,InducedPcgsWrtFamilyPcgs);
+  a:=List([2..Length(a)],x->a[x-1] mod a[x]);
+  if Concatenation(a)<>oc then
+    Error("not natural depths");
+  fi;
+  dep:=List(a,x->DepthOfPcElement(FamilyPcgs(b.ker),x[1]));
+  Add(dep,Length(pc)+1);
+  pc:=PcgsByPcSequence(fam,pc);
+  SetRelativeOrders(pc,RelativeOrders(oc));
+  SetIndicesEANormalSteps(pc,dep);
+  pc!.underlying:=oc;
+  a:=SubgroupByPcgs(g,pc);
+  SetKernelOfMultiplicativeGeneralMapping(nat,a);
+
+  iso:=GroupHomomorphismByFunction(a,b.ker,
+      x->x![2],x->HybridGroupElement(fam,fam!.factorone,x));
+  iso!.sourcePcgs:=pc;
+  return rec(depths:=dep,
+    factorhom:=nat,
+    pcgs:=pc,
+    pcisom:=iso,
+    radical:=a);
+end);
+  
+InstallMethod( ExponentsOfPcElement, "hybrid", IsCollsElms,
+        [ IsPcgs and IsHybridGroupElementCollection, IsHybridGroupElement ], 0,
+function(pcgs,elm)
+  # is it in the kernel?
+  if not IsOne(elm![1]) or not IsBound(pcgs!.underlying) then 
+    TryNextMethod();
+  fi;
+  return ExponentsOfPcElement(pcgs!.underlying,elm![2]);
+end);
