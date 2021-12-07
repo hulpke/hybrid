@@ -33,8 +33,20 @@ fi;
 DeclareRepresentation("IsHybridGroupElementDefaultRep",
   IsPositionalObjectRep and IsHybridGroupElement,[]);
 
+HybridGroupRuleIndex:=function(tzr,rule,s)
+local l;
+  l:=Length(rule);
+  if s>l then
+    return tzr.offset;
+  elif s=l then
+    return (rule[s]+tzr.offset)*tzr.doboff+tzr.offset;
+  else
+    return (rule[s]+tzr.offset)*tzr.doboff+tzr.offset+rule[s+1];
+  fi;
+end;
+
 TranslatedMonoidRules:=function(monhom)
-local fam,t,r,i,offset;
+local fam,t,r,i,offset,deadend,dag,tt,w,a,j;
   fam:=FamilyObj(One(Range(monhom)));
   t:=List(RelationsOfFpMonoid(Range(monhom)),r->List(r,e->
     UnderlyingElement(PreImagesRepresentative(monhom,
@@ -42,20 +54,46 @@ local fam,t,r,i,offset;
 
   t:=List(t,x->List(x,LetterRepAssocWord));
   offset:=1+Length(GeneratorsOfGroup(Source(monhom)));
+
   r:=rec(tzrules:=t,
          offset:=offset,
-         starters:=List([-offset+1..offset+1],x->[]),
+         doboff:=2*offset,
+         starters:=List([1..4*offset^2],x->[]),
          freegens:=FreeGeneratorsOfFpMonoid(Range(monhom)),
          monhom:=monhom,
          monrules:=RelationsOfFpMonoid(Range(monhom)));
   for i in [1..Length(t)] do
     if Length(t[i,1])>0 then
-      Add(r.starters[t[i,1][1]+offset],[t[i,1],t[i,2],i]);
+      #Add(r.starters[t[i,1][1]+offset],[t[i,1],t[i,2],i]);
+      Add(r.starters[HybridGroupRuleIndex(r,t[i,1],1)],[t[i,1],t[i,2],i]);
     fi;
   od;
-  #for i in [-offset+1..offset-1] do
-  #  r.starters[i+offset]:=Filtered(t,x->Length(x[1])>0 and x[1][1]=i);
-  #od;
+
+  # construct a DAG for storing the rules
+  # this assumes the rule set is reduced, i.e. no LHS is in another
+  deadend:=ListWithIdenticalEntries(2*offset-1,fail);
+  dag:=ShallowCopy(deadend);
+  for i in [1..Length(t)] do
+    tt:=t[i,1];
+    w:=dag;
+    for j in [1..Length(tt)] do
+      a:=tt[j]+offset;
+      if w[a]=fail then
+        if j=Length(tt) then
+          # store
+          w[a]:=i;
+        else
+          w[a]:=ShallowCopy(deadend); # at least one symbol more
+          w:=w[a];
+        fi;
+      elif IsList(w[a]) then w:=w[a]; # go to next letter
+      else
+        Error("rule subset of rule");
+      fi;
+    od;
+  od;
+  r.dag:=dag;
+
   return r;
 end;
 
@@ -305,7 +343,7 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
   end);
 
 HybridOldMultRoutine:=function(a,b)
-local fam,xc,y,tzrules,starters,offset,x,has,p,sta,r,cancel,bd,popo,tail;
+local fam,xc,y,tzrec,tzrules,starters,offset,x,has,p,sta,r,cancel,bd,popo,tail;
 
   fam:=FamilyObj(a);
   xc:=a![1]*b![1]; # top product
@@ -313,10 +351,10 @@ local fam,xc,y,tzrules,starters,offset,x,has,p,sta,r,cancel,bd,popo,tail;
 
   # now reduce x with rules
 
-  tzrules:=fam!.tzrules;
-  starters:=tzrules.starters;
-  offset:=tzrules.offset;
-  tzrules:=tzrules.tzrules;
+  tzrec:=fam!.tzrules;
+  starters:=tzrec.starters;
+  offset:=tzrec.offset;
+  tzrules:=tzrec.tzrules;
   x:=LetterRepAssocWord(xc);
   # collect from the left
 
@@ -324,12 +362,11 @@ local fam,xc,y,tzrules,starters,offset,x,has,p,sta,r,cancel,bd,popo,tail;
     has:=false;
     p:=1;
     while p<=Length(x) do
-      sta:=starters[x[p]+offset];
+      sta:=starters[HybridGroupRuleIndex(tzrec,x,p)];
       r:=1;
       while r<=Length(sta) do
         if Length(sta[r,1])+p-1<=Length(x)
-          # shortcut test for rest
-          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
+          # shortcut test for rest -- know first two work
           and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
 
           tail:=x{[p+Length(sta[r,1])..Length(x)]};
@@ -401,8 +438,8 @@ end;
 InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(a,b)
-local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
-      sta,cancel,xc,addbot,bot,sweep,pto,diff,muss;
+local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
+      dag,sta,cancel,xc,addbot,bot,sweep,pto,diff,muss,w,q;
 
   fam:=FamilyObj(a);
 
@@ -482,32 +519,42 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 #Error("PHO");fi;
 #Error(x,bot,"\n");
 
-  tzrules:=fam!.tzrules;
-  starters:=tzrules.starters;
-  offset:=tzrules.offset;
-  tzrules:=tzrules.tzrules;
+  tzrec:=fam!.tzrules;
+  starters:=tzrec.starters;
+  offset:=tzrec.offset;
+  tzrules:=tzrec.tzrules;
+  dag:=tzrec.dag;
+
   # collect from the left
 
   repeat
     has:=false;
     p:=1;
     while p<=Length(x) do
-      sta:=starters[x[p]+offset];
-      r:=1;
-      while r<=Length(sta) do
-        if Length(sta[r,1])+p-1<=Length(x)
-          # shortcut test for rest
-          and (Length(sta[r,1])=1 or x[p+1]=sta[r,1][2])
-          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
+      # find the rule applying at the position in the dag
+      w:=dag;
+      q:=p;
+      while IsList(w) and q<=Length(x) do
+        w:=w[x[q]+offset];
+        q:=q+1;
+      od;
+      if IsInt(w) then
+        sta:=tzrules[w];
+#      sta:=starters[HybridGroupRuleIndex(tzrec,x,p)];
+#      r:=1;
+#      while r<=Length(sta) do
+#        if Length(sta[r,1])+p-1<=Length(x)
+#          # shortcut test for rest -- know first two work
+#          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
 
           # now we apply a rule
 
-          pto:=p+Length(sta[r,1])-1;
+          pto:=p+Length(sta[1])-1;
           sweep(p-1,pto); # move out letters in the way
 
           # change stored indices as needed
-          diff:=Length(sta[r][2])-Length(sta[r][1]);
-#Print("Rule ",sta[r],diff,"\n");
+          diff:=Length(sta[2])-Length(sta[1]);
+#Print("Rule ",sta,diff,"\n");
           if diff<>0 then
 #Print("oldbot",bot,"\n");
 
@@ -533,19 +580,19 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
           tail:=x{[pto+1..Length(x)]};
           # do free cancellation, which does not involve tails
           cancel:=0;
-          bd:=Length(sta[r,2]);if p-1<bd then bd:=p-1;fi;
-          while cancel<bd and x[p-1-cancel]=-sta[r,2][1+cancel] do
+          bd:=Length(sta[2]);if p-1<bd then bd:=p-1;fi;
+          while cancel<bd and x[p-1-cancel]=-sta[2][1+cancel] do
             cancel:=cancel+1;
           od;
           if cancel>0 then
             Error("cancellation 1 -- not yet done");
             x:=Concatenation(x{[1..p-1-cancel]},
-              sta[r,2]{[cancel+1..Length(sta[r,2])]});
+              sta[2]{[cancel+1..Length(sta[2])]});
           else
-            x:=Concatenation(x{[1..p-1]},sta[r,2]);
+            x:=Concatenation(x{[1..p-1]},sta[2]);
           fi;
 
-          popo:=Position(fam!.presentation.monrulpos,sta[r,3]);
+          popo:=Position(fam!.presentation.monrulpos,w);
           if popo<>fail and not IsOne(fam!.tails[popo]) then
             # store tail
 #Print("tail ",x,fam!.tails[popo],"\n");
@@ -569,7 +616,7 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 
           p:=0; # as +1 is at end of loop
           has:=true;
-          r:=Length(sta); # to exit sta loop
+#          r:=Length(sta); # to exit sta loop
 
 #if ValueOption("old")<>true then
 #  Print(">\n");
@@ -578,8 +625,8 @@ local fam,rules,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 
 #Error(x,bot,"\n");
         fi;
-        r:=r+1;
-      od;
+#        r:=r+1;
+#      od;
       p:=p+1;
     od;
   until has=false;
