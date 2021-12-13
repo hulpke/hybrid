@@ -2185,7 +2185,11 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     rw:=List(split,x->HybhomCachedProduct(hom,x));
     rw:=Product(rw,One(Source(hom)));
 
-    ri:=MappedWord(r,topho[2],topho[4]);
+    if Length(topho[2])=0 and IsOne(r) then
+      ri:=One(Range(hom));
+    else
+      ri:=MappedWord(r,topho[2],topho[4]);
+    fi;
     Add(prevs,[r,rw,ri]);
     if Length(prevs)>20 then
       for i in [1..20] do
