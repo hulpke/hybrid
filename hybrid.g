@@ -3558,12 +3558,88 @@ InstallMethod(NaturalHomomorphismByNormalSubgroupOp,
   "hybrid groups",IsIdenticalObj,[IsHybridGroup,IsHybridGroup],0,
 function(G,N)
 local Q,fam,ffs;
-  ffs:=FittingFreeLiftSetup(G);
-  if N=ffs.radical then
-    return ffs.factorhom;
+  ffs:=FittingFreeSubgroupSetup(G,N);
+  if N=ffs.parentffs.radical then
+    return ffs.parentffs.factorhom;
+  elif Length(ffs.pcgs)=Length(ffs.parentffs.pcgs) then
+    Q:=ffs.parentffs.factorhom*NaturalHomomorphismByNormalSubgroup(Image(ffs.parentffs.factorhom,G),
+      Image(ffs.parentffs.factorhom,N));
+    return AsGroupGeneralMappingByImages(Q);
   else
     #T use split rep for factor
-    Error("other nat");
+    Error("other nathom");
     TryNextMethod();
   fi;
+end);
+
+DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
+    []);
+
+InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
+  [IsHybridGroup,IsHybridGroup],0,
+function(G,S)
+local fam,fg,fs,nat,nag,a,qg,qs,qt,qtr,kt,pci,t;
+  fam:=FamilyObj(One(G));
+  fg:=FittingFreeSubgroupSetup(fam!.wholeGroup,G);
+  fs:=FittingFreeSubgroupSetup(fam!.wholeGroup,S);
+  nat:=fg.parentffs.factorhom;
+  a:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(nat,x));
+  qg:=Group(a);
+  nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
+  qs:=Image(nat,S);
+  qt:=RightTransversal(qg,qs);
+  qtr:=List(qt,x->PreImagesRepresentative(nag,x));
+  pci:=fg.parentffs.pcisom;
+  kt:=RightTransversal(Image(pci,fg.ker),Image(pci,fs.ker));
+
+  t := Objectify( NewType( FamilyObj( G ),
+                               IsList and IsDuplicateFreeList
+                           and IsRightTransversalHybridGroupRep ),
+          rec( group :=G,
+            subgroup :=S,
+            efam:=fam,
+            nat:=nat,
+            nag:=nag,
+            qt:=qt,
+            qtr:=qtr,
+            kt:=kt,
+            coe:=[Length(qt),Length(kt)]
+	    ));
+  return t;
+end);
+
+InstallMethod(\[\],"for hybrid transversals",true,
+    [ IsList and IsRightTransversalHybridGroupRep, IsPosInt ],0,
+function(t,num)
+local fam,c;
+  fam:=t!.efam;
+  c:=CoefficientsMultiadic(t!.coe,num-1)+1;
+  return HybridGroupElement(fam,fam!.factorone,t!.kt[c[2]])*t!.qtr[c[1]];
+end );
+
+BindGlobal("HybTransPos",function(t,elm,cano)
+local a,c;
+  a:=ImagesRepresentative(t!.nat,elm);
+  c:=PositionCanonical(t!.qt,a);
+  if c=fail then return fail;fi;
+  elm:=elm/t!.qtr[c];
+  if not IsOne(elm![1]) then return fail;fi;
+  a:=PositionCanonical(t!.kt,elm![2]);
+  if a=fail then return fail;fi;
+  if cano=false and elm<>t!.kt[a] then return fail;fi;
+  return (c-1)*Length(t!.kt)+a;
+end);
+
+InstallMethod(PositionCanonical,"hybrid transversal",IsCollsElms,
+    [ IsList and IsRightTransversalHybridGroupRep,
+    IsMultiplicativeElementWithInverse ],0,
+function(t,elm)
+  return HybTransPos(t,elm,true);
+end);
+
+InstallMethod(Position,"hybrid transversal",IsCollsElms,
+    [ IsList and IsRightTransversalHybridGroupRep,
+    IsMultiplicativeElementWithInverse ],0,
+function(t,elm)
+  return HybTransPos(t,elm,false);
 end);
