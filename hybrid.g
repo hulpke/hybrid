@@ -3578,15 +3578,19 @@ DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
 InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
   [IsHybridGroup,IsHybridGroup],0,
 function(G,S)
-local fam,fg,fs,nat,nag,a,qg,qs,qt,qtr,kt,pci,t;
+local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t;
   fam:=FamilyObj(One(G));
   fg:=FittingFreeSubgroupSetup(fam!.wholeGroup,G);
   fs:=FittingFreeSubgroupSetup(fam!.wholeGroup,S);
   nat:=fg.parentffs.factorhom;
   a:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(nat,x));
-  qg:=Group(a);
+  qg:=SubgroupNC(Range(nat),a);
   nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
-  qs:=Image(nat,S);
+
+  a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
+  qs:=SubgroupNC(Range(nat),a);
+  nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
+
   qt:=RightTransversal(qg,qs);
   qtr:=List(qt,x->PreImagesRepresentative(nag,x));
   pci:=fg.parentffs.pcisom;
@@ -3600,6 +3604,7 @@ local fam,fg,fs,nat,nag,a,qg,qs,qt,qtr,kt,pci,t;
             efam:=fam,
             nat:=nat,
             nag:=nag,
+            nas:=nas,
             qt:=qt,
             qtr:=qtr,
             kt:=kt,
@@ -3622,7 +3627,11 @@ local a,c;
   a:=ImagesRepresentative(t!.nat,elm);
   c:=PositionCanonical(t!.qt,a);
   if c=fail then return fail;fi;
+  a:=a/t!.qt[c]; # factor elm
   elm:=elm/t!.qtr[c];
+  a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
+  elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor, 
+  # coset remains the same
   if not IsOne(elm![1]) then return fail;fi;
   a:=PositionCanonical(t!.kt,elm![2]);
   if a=fail then return fail;fi;
