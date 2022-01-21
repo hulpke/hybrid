@@ -1618,7 +1618,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
   fam:=FamilyObj(One(G));
   # TODO: Re-use these free groups
-  gf:=FreeGroup(Length(GeneratorsOfGroup(G))); # for word expressions
+  gf:=FreeGroup(Length(GeneratorsOfGroup(G)),"w"); # for word expressions
   gfg:=GeneratorsOfGroup(gf);
   #gfg:=StraightLineProgGens(gfg);
 
@@ -3365,7 +3365,7 @@ InstallMethod(FittingFreeLiftSetup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(g)
 local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
-  fc,fcr,nc;
+  fc,fcr,nc,src;
   fam:=FamilyObj(One(g));
   b:=HybridBits(g);
   # can we used induced form?
@@ -3467,7 +3467,7 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
       a:=oc;
     fi;
 
-    dep:=List(a,x->DepthOfPcElement(FamilyPcgs(b.ker),x[1]));
+    dep:=List(a,x->DepthOfPcElement(oc,x[1]));
     Add(dep,Length(pc)+1);
 
     if Size(frad)>1 then
@@ -3502,11 +3502,13 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
 
     else
       pc:=PcgsByPcSequence(fam,pc);
+      src:=SubgroupNC(g,pc);
+#HybridBits(src);
       SetRelativeOrders(pc,RelativeOrders(oc));
       SetIndicesEANormalSteps(pc,dep);
       pc!.underlying:=oc;
       pc!.fmap:=fail;
-      iso:=GroupHomomorphismByFunction(a,b.ker,
+      iso:=GroupHomomorphismByFunction(src,b.ker,
           x->x![2],x->HybridGroupElement(fam,fam!.factorone,x));
       iso!.sourcePcgs:=pc;
     fi;
@@ -3557,7 +3559,7 @@ end);
 InstallMethod(NaturalHomomorphismByNormalSubgroupOp,
   "hybrid groups",IsIdenticalObj,[IsHybridGroup,IsHybridGroup],0,
 function(G,N)
-local Q,fam,ffs;
+local Q,fam,ffs,hom,nat;
   ffs:=FittingFreeSubgroupSetup(G,N);
   if N=ffs.parentffs.radical then
     return ffs.parentffs.factorhom;
@@ -3565,6 +3567,13 @@ local Q,fam,ffs;
     Q:=ffs.parentffs.factorhom*NaturalHomomorphismByNormalSubgroup(Image(ffs.parentffs.factorhom,G),
       Image(ffs.parentffs.factorhom,N));
     return AsGroupGeneralMappingByImages(Q);
+  elif Size(Image(ffs.parentffs.factorhom,G))=1 then
+    # all happens in the kernel
+    hom:=ffs.parentffs.pcisom;
+    nat:=NaturalHomomorphismByNormalSubgroup(Image(hom,G),Image(hom,N));
+    hom:=hom*nat;
+    SetKernelOfMultiplicativeGeneralMapping(hom,N);
+    return hom;
   else
     #T use split rep for factor
     Error("other nathom");
@@ -3651,4 +3660,19 @@ InstallMethod(Position,"hybrid transversal",IsCollsElms,
     IsMultiplicativeElementWithInverse ],0,
 function(t,elm)
   return HybTransPos(t,elm,false);
+end);
+
+InstallMethod(CompositionSeries,"hybrid",true,[IsHybridGroup],0,
+function(G)
+local ff,ser,Q;
+  ff:=FittingFreeLiftSetup(G);
+  ser:=[G];
+  Q:=Image(ff.factorhom,G);
+  Q:=Filtered(CompositionSeries(Q),x->Size(x)<Size(Q));
+  Append(ser,List(Q,x->PreImage(ff.factorhom,x)));
+  Q:=CompositionSeries(Image(ff.pcisom,ff.radical));
+  Q:=Q{[2..Length(Q)]};
+  Q:=List(Q,x->PreImage(ff.pcisom,x));
+  Append(ser,Q);
+  return ser;
 end);
