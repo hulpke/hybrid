@@ -1694,15 +1694,15 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   fi;
 
-  map:=GroupGeneralMappingByImages(factor,gf,top,gfg{sel});
+  map:=GroupGeneralMappingByImagesNC(factor,gf,top,gfg{sel});
   if dowords=false 
       and IsHybridGroup(factor) and Size(factor)=ffam!.wholeSize then
     of:=G!.originalFactor;
-    map:=GroupGeneralMappingByImages(of,gf,top,gfg{sel});
+    map:=GroupGeneralMappingByImagesNC(of,gf,top,gfg{sel});
     map:=List(GeneratorsOfGroup(fp),
       x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
   else
-    map:=GroupGeneralMappingByImages(factor,gf,top,gfg{sel});
+    map:=GroupGeneralMappingByImagesNC(factor,gf,top,gfg{sel});
     map:=List(GeneratorsOfGroup(fp),
       x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
   fi;
@@ -1754,7 +1754,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
 
   # short words
-  if Size(sub)<sz and Length(sel)>0 then
+  if Size(sub)<sz and Length(sel)>0 and dowords then
     j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},100);
     for i in j[2] do
       addker(i);
