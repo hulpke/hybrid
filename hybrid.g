@@ -1115,6 +1115,8 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
   nwf:=FamilyObj(One(pf));
   pf:=pres.group/pres.relators;
 
+  nfam!.fphom:=GroupHomomorphismByImagesNC(nfam!.factgrp,pf,GeneratorsOfGroup(nfam!.factgrp),GeneratorsOfGroup(pf));
+
   nfam!.monhom:=MagmaIsomorphismByFunctionsNC(pf,mon,
         function(w)
           local l,i;
@@ -3096,6 +3098,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     SetSize(cov,Size(b.factor)*Size(b.ker));
     b:=Group(List(GeneratorsOfGroup(cov),fam!.quickermult));
     SetSize(b,Size(cov));
+if not IsBound(FamilyObj(One(b))!.fphom) then Error("C");fi;
     cov:=b;
     fam:=FamilyObj(One(cov));
     if not IsBound(fam!.fphom) then
