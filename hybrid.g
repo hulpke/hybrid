@@ -5,7 +5,9 @@
 
 # User functions:
 #
-# WreathModuleCopverHybrid(H,module) constructs
+# HybridGroupCocycle(cohomrecord,cocycle)
+#
+# WreathModuleCoverHybrid(H,module) constructs
 # \hat H_{V,e} (where $e$ is given through H
 # G should be a permutation group, module a (MeatAxe) module with generators
 # corresponding to those of H
@@ -25,9 +27,11 @@ if not IsBound(IsHybridGroupElement) then
       and CanEasilySortElements );
   DeclareCategoryCollections( "IsHybridGroupElement" );
   DeclareSynonym( "IsHybridGroup", IsGroup and IsHybridGroupElementCollection );
+  InstallTrueMethod(CanComputeFittingFree, IsHybridGroup);
   InstallTrueMethod( IsSubsetLocallyFiniteGroup, IsHybridGroupElementCollection );
-  InstallTrueMethod( IsGeneratorsOfMagmaWithInverses,
-    IsHybridGroupElementCollection );
+
+InstallTrueMethod( IsGeneratorsOfMagmaWithInverses,
+  IsHybridGroupElementCollection );
 fi;
 
 DeclareRepresentation("IsHybridGroupElementDefaultRep",
@@ -439,7 +443,7 @@ InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(a,b)
 local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
-      dag,sta,cancel,xc,addbot,bot,sweep,pto,diff,muss,w,q;
+      dag,sta,cancel,xc,addbot,bot,sweep,botsh,pto,diff,muss,w,q;
 
   fam:=FamilyObj(a);
 
@@ -452,7 +456,6 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   bot:=[]; # tail entries, *after* which position the tail bit happens.
   addbot:=function(pos,val)
   local p;
-#Print(bot,"\n");
     p:=PositionSorted(bot,[pos]);
     if p<=Length(bot) and bot[p][1]=pos then
       val:=val*bot[p][2];
@@ -466,13 +469,11 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
     else
       AddSet(bot,Immutable([pos,val]));
     fi;
-#p:=List(bot,x->x[1]); if Length(p)>Length(Set(p)) then Error("doup");fi;
   end;
 
   # move bottom elements out of range
   sweep:=function(from,to)
   local i,p,q,a;
-#Print("sweep ",from," : ",to," ",bot,"\n");
     i:=1;
     while i<=Length(bot) do
       p:=bot[i][1];
@@ -491,13 +492,30 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
           q:=to;
         fi;
         # move and enter, possibly changing next entry
-#Error("weep");
         a:=HybridGroupAutrace(fam,a,x{[p+1..q]});
         addbot(q,a);
         # no i increment needed, as we deleted current one
       fi;
     od;
-#    Print("endsweep ",bot,"\n");
+  end;
+
+  # change all bot entries that are at `from' or later by `by`
+  botsh:=function(from,by)
+  local i;
+    i:=1;
+    while i<=Length(bot) do
+      if bot[i][1]>=from then
+        bot[i]:=Immutable([bot[i][1]+by,bot[i][2]]);
+        # collision?
+        if i>1 and bot[i][1]=bot[i-1][1] then
+          bd:=[bot[i][1],bot[i-1][2]*bot[i][2]];
+          bot:=Concatenation(bot{[1..i-2]},bot{[i+1..Length(bot)]});
+          addbot(bd[1],bd[2]);
+          i:=i-1;
+        fi;
+      fi;
+      i:=i+1;
+    od;
   end;
 
   if not IsOne(b![2]) then
@@ -516,8 +534,6 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 
 #if ValueOption("old")<>true then muss:=\*(a,b:old);fi;
 #if ValueOption("old")<>true and muss<>MyVerify(fam,x,bot:old) then
-#Error("PHO");fi;
-#Error(x,bot,"\n");
 
   tzrec:=fam!.tzrules;
   starters:=tzrec.starters;
@@ -540,93 +556,70 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
       od;
       if IsInt(w) then
         sta:=tzrules[w];
-#      sta:=starters[HybridGroupRuleIndex(tzrec,x,p)];
-#      r:=1;
-#      while r<=Length(sta) do
-#        if Length(sta[r,1])+p-1<=Length(x)
-#          # shortcut test for rest -- know first two work
-#          and ForAll([3..Length(sta[r,1])],y->x[p+y-1]=sta[r,1][y]) then
 
-          # now we apply a rule
+        # now we apply a rule
 
-          pto:=p+Length(sta[1])-1;
-          sweep(p-1,pto); # move out letters in the way
+        pto:=p+Length(sta[1])-1;
+        sweep(p-1,pto); # move out letters in the way
 
-          # change stored indices as needed
-          diff:=Length(sta[2])-Length(sta[1]);
-#Print("Rule ",sta,diff,"\n");
-          if diff<>0 then
-#Print("oldbot",bot,"\n");
-
-            i:=1;
-            while i<=Length(bot) do
-              if bot[i][1]>=pto then
-                bot[i]:=Immutable([bot[i][1]+diff,bot[i][2]]);
-                # collision?
-                if i>1 and bot[i][1]=bot[i-1][1] then
-                  bd:=[bot[i][1],bot[i-1][2]*bot[i][2]];
-                  bot:=Concatenation(bot{[1..i-2]},bot{[i+1..Length(bot)]});
-                  addbot(bd[1],bd[2]);
-                  i:=i-1;
-                fi;
-              fi;
-              i:=i+1;
-            od;
-#Print("newbot",bot,"\n");
-#i:=List(bot,x->x[1]); if Length(i)>Length(Set(i)) then Error("doup2");fi;
-
-          fi;
-
-          tail:=x{[pto+1..Length(x)]};
-          # do free cancellation, which does not involve tails
-          cancel:=0;
-          bd:=Length(sta[2]);if p-1<bd then bd:=p-1;fi;
-          while cancel<bd and x[p-1-cancel]=-sta[2][1+cancel] do
-            cancel:=cancel+1;
-          od;
-          if cancel>0 then
-            Error("cancellation 1 -- not yet done");
-            x:=Concatenation(x{[1..p-1-cancel]},
-              sta[2]{[cancel+1..Length(sta[2])]});
-          else
-            x:=Concatenation(x{[1..p-1]},sta[2]);
-          fi;
-
-          popo:=Position(fam!.presentation.monrulpos,w);
-          if popo<>fail and not IsOne(fam!.tails[popo]) then
-            # store tail
-#Print("tail ",x,fam!.tails[popo],"\n");
-            addbot(Length(x),fam!.tails[popo]);
-          fi;
-
-          # do free cancellation, which does not involve tails
-          cancel:=0;
-          bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
-          while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
-            cancel:=cancel+1;
-          od;
-          if cancel>0 then
-            Error("cancellation 2 -- not yet done");
-            x:=Concatenation(x{[1..Length(x)-cancel]},
-              tail{[cancel+1..Length(tail)]});
-          else
-            x:=Concatenation(x,tail);
-          fi;
-#if ForAny(bot,k->k[1]>Length(x)+1) then Error("PUHX");fi;
-
-          p:=0; # as +1 is at end of loop
-          has:=true;
-#          r:=Length(sta); # to exit sta loop
-
-#if ValueOption("old")<>true then
-#  Print(">\n");
-#  if muss<>MyVerify(fam,x,bot:old) then Error("PHO");#else Print("OHP\n");
-#  fi;fi;
-
-#Error(x,bot,"\n");
+        # change stored indices as needed
+        diff:=Length(sta[2])-Length(sta[1]);
+        if diff<>0 then
+          botsh(pto,diff);
         fi;
-#        r:=r+1;
-#      od;
+
+        tail:=x{[pto+1..Length(x)]};
+        # do free cancellation, which does not involve tails
+        cancel:=0;
+        bd:=Length(sta[2]);if p-1<bd then bd:=p-1;fi;
+        while cancel<bd and x[p-1-cancel]=-sta[2][1+cancel] do
+          cancel:=cancel+1;
+        od;
+        if cancel>0 then
+          p:=p-1; # end of old
+          # first form the word with the to-cancel bit
+          x:=Concatenation(x{[1..p]},sta[2]);
+          # move out all bottoms in the cancellation range
+          sweep(p-cancel+1,p+cancel);
+          # reindex those after the cancellation
+          botsh(p+cancel,-2*cancel);
+          # cut out cancelled bit
+          x:=Concatenation(x{[1..p-cancel]},x{[p+1+cancel..Length(x)]});
+        else
+          x:=Concatenation(x{[1..p-1]},sta[2]);
+        fi;
+
+        popo:=Position(fam!.presentation.monrulpos,w);
+        if popo<>fail and not IsOne(fam!.tails[popo]) then
+          # store tail
+          addbot(Length(x),fam!.tails[popo]);
+        fi;
+
+        # do free cancellation, which does not involve tails
+        cancel:=0;
+        bd:=Length(tail);if Length(x)<bd then bd:=Length(x);fi;
+        while cancel<bd and x[Length(x)-cancel]=-tail[1+cancel] do
+          cancel:=cancel+1;
+        od;
+        if cancel>0 then
+          p:=Length(x);
+          # first form the word with the to-cancel bit
+          x:=Concatenation(x,tail);
+          # move out all bottoms in the cancellation range
+          sweep(p-cancel+1,p+cancel);
+          # reindex those after the cancellation
+          botsh(p+cancel,-2*cancel);
+          # cut out cancelled bit
+          x:=Concatenation(x{[1..p-cancel]},x{[p+1+cancel..Length(x)]});
+        else
+          x:=Concatenation(x,tail);
+        fi;
+
+        p:=0; # as +1 is at end of loop
+        has:=true;
+
+      fi;
+
       p:=p+1;
     od;
   until has=false;
@@ -1121,6 +1114,8 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
 
   nwf:=FamilyObj(One(pf));
   pf:=pres.group/pres.relators;
+
+  nfam!.fphom:=GroupHomomorphismByImagesNC(nfam!.factgrp,pf,GeneratorsOfGroup(nfam!.factgrp),GeneratorsOfGroup(pf));
 
   nfam!.monhom:=MagmaIsomorphismByFunctionsNC(pf,mon,
         function(w)
@@ -1625,7 +1620,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
   fam:=FamilyObj(One(G));
   # TODO: Re-use these free groups
-  gf:=FreeGroup(Length(GeneratorsOfGroup(G))); # for word expressions
+  gf:=FreeGroup(Length(GeneratorsOfGroup(G)),"w"); # for word expressions
   gfg:=GeneratorsOfGroup(gf);
   #gfg:=StraightLineProgGens(gfg);
 
@@ -1701,15 +1696,15 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   fi;
 
-  map:=GroupGeneralMappingByImages(factor,gf,top,gfg{sel});
+  map:=GroupGeneralMappingByImagesNC(factor,gf,top,gfg{sel});
   if dowords=false 
       and IsHybridGroup(factor) and Size(factor)=ffam!.wholeSize then
     of:=G!.originalFactor;
-    map:=GroupGeneralMappingByImages(of,gf,top,gfg{sel});
+    map:=GroupGeneralMappingByImagesNC(of,gf,top,gfg{sel});
     map:=List(GeneratorsOfGroup(fp),
       x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
   else
-    map:=GroupGeneralMappingByImages(factor,gf,top,gfg{sel});
+    map:=GroupGeneralMappingByImagesNC(factor,gf,top,gfg{sel});
     map:=List(GeneratorsOfGroup(fp),
       x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
   fi;
@@ -1761,7 +1756,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
 
   # short words
-  if Size(sub)<sz and Length(sel)>0 then
+  if Size(sub)<sz and Length(sel)>0 and dowords then
     j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},100);
     for i in j[2] do
       addker(i);
@@ -1830,10 +1825,13 @@ local fam,bits,elq;
     GeneratorsOfGroup(fam!.presentation.group),
     GeneratorsOfGroup(fam!.factgrp));
   if not elq in bits.factor then return false;fi;
-  elq:=ImagesRepresentative(bits.factoriso,elq);
-  elq:=MappedWord(elq,GeneratorsOfGroup(Range(bits.factoriso)),
-    bits.freps);
-  elm:=elm/elq;
+  if Length(bits.freps)>0 then
+    # divide off possible nontrivial factor part
+    elq:=ImagesRepresentative(bits.factoriso,elq);
+    elq:=MappedWord(elq,GeneratorsOfGroup(Range(bits.factoriso)),
+      bits.freps);
+    elm:=elm/elq;
+  fi;
   if not IsOne(elm![1]) then Error("weird!");fi;
   return IsOne(SiftedPcElement(CanonicalPcgs(bits.kerpcgs),elm![2]));
   #TryNextMethod();
@@ -3100,6 +3098,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     SetSize(cov,Size(b.factor)*Size(b.ker));
     b:=Group(List(GeneratorsOfGroup(cov),fam!.quickermult));
     SetSize(b,Size(cov));
+if not IsBound(FamilyObj(One(b))!.fphom) then Error("C");fi;
     cov:=b;
     fam:=FamilyObj(One(cov));
     if not IsBound(fam!.fphom) then
@@ -3368,72 +3367,315 @@ end);
 InstallMethod(FittingFreeLiftSetup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(g)
-local fam,b,geni,nat,dep,oc,iso,kb,mfam,pc,a,ser;
+local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
+  fc,fcr,nc,src;
   fam:=FamilyObj(One(g));
   b:=HybridBits(g);
-  # is it the whole family?
-  if Size(b.factor)<>Size(fam!.factgrp) or Size(b.ker)<>Size(fam!.normal)
-    or Size(RadicalGroup(fam!.factgrp))>1 then
-    Print("Generic hybrid method does not work here\n");
-    TryNextMethod();
+  # can we used induced form?
+  if Size(b.ker)=Size(fam!.normal) and Size(RadicalGroup(b.factor))=1 then
+    geni:=List(GeneratorsOfGroup(g),x->x![1]);
+    geni:=List(geni,x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
+      GeneratorsOfGroup(fam!.factgrp)));
+    kb:=ReducedConfluentRewritingSystem(Range(fam!.monhom));;
+    mfam:=FamilyObj(One(Range(fam!.monhom)));;
+    nat:=GroupHomomorphismByFunction(g,fam!.factgrp,
+      x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
+        GeneratorsOfGroup(fam!.factgrp)),false,
+      function(elm)
+      local w;
+        w:=ImagesRepresentative(fam!.fphom,elm);
+        w:=ImagesRepresentative(fam!.monhom,w);
+        w:=ReducedForm(kb,UnderlyingElement(w));
+        w:=ElementOfFpMonoid(mfam,w);
+        w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
+        return HybridGroupElement(fam,w,fam!.normalone);
+      end);
+
+    SetMappingGeneratorsImages(nat,[GeneratorsOfGroup(g),geni]);
+
+    oc:=CanonicalPcgs(b.kerpcgs);
+    pc:=List(oc,x->HybridGroupElement(fam,fam!.factorone,x));
+    a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
+      oc,List(pc,y->(y^x)![2])));
+    ser:=InvariantElementaryAbelianSeries(b.ker,a);
+    a:=List(ser,InducedPcgsWrtFamilyPcgs);
+    a:=List([2..Length(a)],x->a[x-1] mod a[x]);
+    if Concatenation(a)<>oc then
+      Error("not natural depths");
+    fi;
+    dep:=List(a,x->DepthOfPcElement(FamilyPcgs(b.ker),x[1]));
+    Add(dep,Length(pc)+1);
+    pc:=PcgsByPcSequence(fam,pc);
+    SetRelativeOrders(pc,RelativeOrders(oc));
+    SetIndicesEANormalSteps(pc,dep);
+    pc!.underlying:=oc;
+    pc!.fmap:=fail;
+    a:=SubgroupByPcgs(g,pc);
+    SetKernelOfMultiplicativeGeneralMapping(nat,a);
+
+    iso:=GroupHomomorphismByFunction(a,b.ker,
+        x->x![2],x->HybridGroupElement(fam,fam!.factorone,x));
+    iso!.sourcePcgs:=pc;
+  else
+
+    geni:=List(GeneratorsOfGroup(g),x->x![1]);
+    geni:=List(geni,x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
+      GeneratorsOfGroup(fam!.factgrp)));
+
+    if Size(b.ker)=Size(fam!.normal) then
+      kb:=ReducedConfluentRewritingSystem(Range(fam!.monhom));;
+      mfam:=FamilyObj(One(Range(fam!.monhom)));;
+      # preimage representatives are obtained by simply writing the factor
+      # word with a 1-tail
+      prerep:=function(elm)
+      local w;
+        w:=ImagesRepresentative(fam!.fphom,elm);
+        w:=ImagesRepresentative(fam!.monhom,w);
+        w:=ReducedForm(kb,UnderlyingElement(w));
+        w:=ElementOfFpMonoid(mfam,w);
+        w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
+        return HybridGroupElement(fam,w,fam!.normalone);
+      end;
+    else
+      premap:=GroupHomomorphismByImagesNC(b.factor,g,geni,GeneratorsOfGroup(g));
+      prerep:=elm->ImagesRepresentative(premap,elm);
+    fi;
+
+    fmap:=GroupHomomorphismByFunction(g,b.factor,
+      x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
+        GeneratorsOfGroup(fam!.factgrp)),false,prerep);
+    SetMappingGeneratorsImages(fmap,[GeneratorsOfGroup(g),geni]);
+
+    frad:=RadicalGroup(b.factor);
+    if Size(frad)=1 then
+      nat:=fmap;
+    else
+      ffh:=NaturalHomomorphismByNormalSubgroupNC(b.factor,frad);
+      nat:=fmap*ffh;
+    fi;
+
+    # pcgs in kernel
+    oc:=CanonicalPcgs(b.kerpcgs);
+    pc:=List(oc,x->HybridGroupElement(fam,fam!.factorone,x));
+    if Size(b.ker)>1 then
+      a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
+      oc,List(pc,y->(y^x)![2])));
+      ser:=InvariantElementaryAbelianSeries(b.ker,a);
+      a:=List(ser,CanonicalPcgsWrtFamilyPcgs);
+      a:=List([2..Length(a)],x->a[x-1] mod a[x]);
+      if Concatenation(a)<>oc then
+        Error("not natural depths");
+      fi;
+    else
+      a:=oc;
+    fi;
+
+    dep:=List(a,x->DepthOfPcElement(oc,x[1]));
+    Add(dep,Length(pc)+1);
+
+    if Size(frad)>1 then
+      # combine with Pcgs on top
+      fc:=Pcgs(frad);
+      dep:=dep+Length(fc);
+      a:=List(GeneratorsOfGroup(b.factor),
+        x->GroupHomomorphismByImagesNC(frad,frad,fc,List(fc,y->(y^x))));
+      ser:=InvariantElementaryAbelianSeries(frad,a);
+      a:=List(ser,x->CanonicalPcgs(InducedPcgs(fc,x)));
+      a:=List([2..Length(a)],x->a[x-1] mod a[x]);
+      if Concatenation(a)<>fc then
+        fc:=PcgsByPcSequence(FamilyObj(One(frad)),Concatenation(a));
+      fi;
+      fcr:=List(fc,x->PreImagesRepresentative(fmap,x));
+      nc:=pc;
+      pc:=PcgsByPcSequenceCons( IsPcgsDefaultRep,IsPcgs and IsUnsortedPcgsRep,
+                  fam, Concatenation(fcr,nc),[] );
+      pc!.fmap:=fmap;
+      pc!.factorpc:=fc;
+      pc!.fcreps:=fcr;
+      pc!.normalpc:=oc;
+      SetRelativeOrders(pc,
+        Concatenation(RelativeOrders(fc),RelativeOrders(oc)));
+      if ForAll(RelativeOrders(pc),IsPrimeInt) then
+        SetIsPrimeOrdersPcgs(pc,true);
+      fi;
+      dep:=Concatenation(List(a,x->DepthOfPcElement(fc,x[1])),dep);
+      SetIndicesEANormalSteps(pc,dep);
+      oc:=PcGroupWithPcgs(pc);
+      iso:=GroupHomomorphismByImagesNC(SubgroupNC(g,pc),oc,pc,FamilyPcgs(oc));
+
+    else
+      pc:=PcgsByPcSequence(fam,pc);
+      src:=SubgroupNC(g,pc);
+#HybridBits(src);
+      SetRelativeOrders(pc,RelativeOrders(oc));
+      SetIndicesEANormalSteps(pc,dep);
+      pc!.underlying:=oc;
+      pc!.fmap:=fail;
+      iso:=GroupHomomorphismByFunction(src,b.ker,
+          x->x![2],x->HybridGroupElement(fam,fam!.factorone,x));
+      iso!.sourcePcgs:=pc;
+    fi;
+
+    a:=SubgroupByPcgs(g,pc);
+    SetKernelOfMultiplicativeGeneralMapping(nat,a);
+
   fi;
-  geni:=List(GeneratorsOfGroup(g),x->x![1]);
-  geni:=List(geni,x->MappedWord(x,GeneratorsOfGroup(fam!.presentation.group),
-    GeneratorsOfGroup(fam!.factgrp)));
-  #nat:=GroupGeneralMappingByImagesNC(g,fam!.factgrp,GeneratorsOfGroup(g),geni);
-  #SetIsMapping(nat,true);
-  kb:=ReducedConfluentRewritingSystem(Range(fam!.monhom));;
-  mfam:=FamilyObj(One(Range(fam!.monhom)));;
-  nat:=GroupHomomorphismByFunction(g,fam!.factgrp,
-    x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
-      GeneratorsOfGroup(fam!.factgrp)),false,
-    function(elm)
-    local w;
-      w:=ImagesRepresentative(fam!.fphom,elm);
-      w:=ImagesRepresentative(fam!.monhom,w);
-      w:=ReducedForm(kb,UnderlyingElement(w));
-      w:=ElementOfFpMonoid(mfam,w);
-      w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
-      return HybridGroupElement(fam,w,fam!.normalone);
-    end);
-
-  SetMappingGeneratorsImages(nat,[GeneratorsOfGroup(g),geni]);
-
-  oc:=CanonicalPcgs(b.kerpcgs);
-  pc:=List(oc,x->HybridGroupElement(fam,fam!.factorone,x));
-  a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
-    oc,List(pc,y->(y^x)![2])));
-  ser:=InvariantElementaryAbelianSeries(b.ker,a);
-  a:=List(ser,InducedPcgsWrtFamilyPcgs);
-  a:=List([2..Length(a)],x->a[x-1] mod a[x]);
-  if Concatenation(a)<>oc then
-    Error("not natural depths");
-  fi;
-  dep:=List(a,x->DepthOfPcElement(FamilyPcgs(b.ker),x[1]));
-  Add(dep,Length(pc)+1);
-  pc:=PcgsByPcSequence(fam,pc);
-  SetRelativeOrders(pc,RelativeOrders(oc));
-  SetIndicesEANormalSteps(pc,dep);
-  pc!.underlying:=oc;
-  a:=SubgroupByPcgs(g,pc);
-  SetKernelOfMultiplicativeGeneralMapping(nat,a);
-
-  iso:=GroupHomomorphismByFunction(a,b.ker,
-      x->x![2],x->HybridGroupElement(fam,fam!.factorone,x));
-  iso!.sourcePcgs:=pc;
-  return rec(depths:=dep,
+  a:=rec(depths:=dep,
     factorhom:=nat,
     pcgs:=pc,
-    pcisom:=iso,
     radical:=a);
+  if iso<>fail then a.pcisom:=iso;fi;
+  return a;
 end);
-  
+
 InstallMethod( ExponentsOfPcElement, "hybrid", IsCollsElms,
-        [ IsPcgs and IsHybridGroupElementCollection, IsHybridGroupElement ], 0,
+      [ IsPcgs and IsHybridGroupElementCollection, IsHybridGroupElement ], 0,
 function(pcgs,elm)
-  # is it in the kernel?
-  if not IsOne(elm![1]) or not IsBound(pcgs!.underlying) then 
+local a;
+  if not IsBound(pcgs!.fmap) then
+    TryNextMethod(); # built differently
+  elif pcgs!.fmap=fail then
+    return ExponentsOfPcElement(pcgs!.underlying,elm![2]);
+  else
+    a:=ExponentsOfPcElement(pcgs!.factorpc,
+      ImagesRepresentative(pcgs!.fmap,elm));
+    # divide off what the factor reps give
+    elm:=LeftQuotient(LinearCombinationPcgs(pcgs!.fcreps,a),elm);
+    if not IsOne(elm![1]) then Error("not clean");fi;
+    Append(a,ExponentsOfPcElement(pcgs!.normalpc,elm![2]));
+    return a;
+  fi;
+end);
+
+InstallMethod(Random,"hybrid groups",true,[IsHybridGroup],0,
+function(G)
+local ffs,r;
+  ffs:=FittingFreeLiftSetup(G);
+  if Size(Image(ffs.factorhom))>1 then
+    r:=PreImagesRepresentative(ffs.factorhom,Random(Image(ffs.factorhom)));
+  else
+    r:=One(G);
+  fi;
+  return r*PreImagesRepresentative(ffs.pcisom,Random(Image(ffs.pcisom)));
+end);
+
+InstallMethod(NaturalHomomorphismByNormalSubgroupOp,
+  "hybrid groups",IsIdenticalObj,[IsHybridGroup,IsHybridGroup],0,
+function(G,N)
+local Q,fam,ffs,hom,nat;
+  ffs:=FittingFreeSubgroupSetup(G,N);
+  if N=ffs.parentffs.radical then
+    return ffs.parentffs.factorhom;
+  elif Length(ffs.pcgs)=Length(ffs.parentffs.pcgs) then
+    Q:=ffs.parentffs.factorhom*NaturalHomomorphismByNormalSubgroup(Image(ffs.parentffs.factorhom,G),
+      Image(ffs.parentffs.factorhom,N));
+    return AsGroupGeneralMappingByImages(Q);
+  elif Size(Image(ffs.parentffs.factorhom,G))=1 then
+    # all happens in the kernel
+    hom:=ffs.parentffs.pcisom;
+    nat:=NaturalHomomorphismByNormalSubgroup(Image(hom,G),Image(hom,N));
+    hom:=hom*nat;
+    SetKernelOfMultiplicativeGeneralMapping(hom,N);
+    return hom;
+  else
+    #T use split rep for factor
+    Error("other nathom");
     TryNextMethod();
   fi;
-  return ExponentsOfPcElement(pcgs!.underlying,elm![2]);
+end);
+
+DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
+    []);
+
+InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
+  [IsHybridGroup,IsHybridGroup],0,
+function(G,S)
+local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t;
+  fam:=FamilyObj(One(G));
+  fg:=FittingFreeSubgroupSetup(fam!.wholeGroup,G);
+  fs:=FittingFreeSubgroupSetup(fam!.wholeGroup,S);
+  nat:=fg.parentffs.factorhom;
+  a:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(nat,x));
+  qg:=SubgroupNC(Range(nat),a);
+  nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
+
+  a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
+  qs:=SubgroupNC(Range(nat),a);
+  nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
+
+  qt:=RightTransversal(qg,qs);
+  qtr:=List(qt,x->PreImagesRepresentative(nag,x));
+  pci:=fg.parentffs.pcisom;
+  kt:=RightTransversal(Image(pci,fg.ker),Image(pci,fs.ker));
+
+  t := Objectify( NewType( FamilyObj( G ),
+                               IsList and IsDuplicateFreeList
+                           and IsRightTransversalHybridGroupRep ),
+          rec( group :=G,
+            subgroup :=S,
+            efam:=fam,
+            nat:=nat,
+            nag:=nag,
+            nas:=nas,
+            qt:=qt,
+            qtr:=qtr,
+            kt:=kt,
+            coe:=[Length(qt),Length(kt)]
+	    ));
+  return t;
+end);
+
+InstallMethod(\[\],"for hybrid transversals",true,
+    [ IsList and IsRightTransversalHybridGroupRep, IsPosInt ],0,
+function(t,num)
+local fam,c;
+  fam:=t!.efam;
+  c:=CoefficientsMultiadic(t!.coe,num-1)+1;
+  return HybridGroupElement(fam,fam!.factorone,t!.kt[c[2]])*t!.qtr[c[1]];
+end );
+
+BindGlobal("HybTransPos",function(t,elm,cano)
+local a,c;
+  a:=ImagesRepresentative(t!.nat,elm);
+  c:=PositionCanonical(t!.qt,a);
+  if c=fail then return fail;fi;
+  a:=a/t!.qt[c]; # factor elm
+  elm:=elm/t!.qtr[c];
+  a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
+  elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor, 
+  # coset remains the same
+  if not IsOne(elm![1]) then return fail;fi;
+  a:=PositionCanonical(t!.kt,elm![2]);
+  if a=fail then return fail;fi;
+  if cano=false and elm<>t!.kt[a] then return fail;fi;
+  return (c-1)*Length(t!.kt)+a;
+end);
+
+InstallMethod(PositionCanonical,"hybrid transversal",IsCollsElms,
+    [ IsList and IsRightTransversalHybridGroupRep,
+    IsMultiplicativeElementWithInverse ],0,
+function(t,elm)
+  return HybTransPos(t,elm,true);
+end);
+
+InstallMethod(Position,"hybrid transversal",IsCollsElms,
+    [ IsList and IsRightTransversalHybridGroupRep,
+    IsMultiplicativeElementWithInverse ],0,
+function(t,elm)
+  return HybTransPos(t,elm,false);
+end);
+
+InstallMethod(CompositionSeries,"hybrid",true,[IsHybridGroup],0,
+function(G)
+local ff,ser,Q;
+  ff:=FittingFreeLiftSetup(G);
+  ser:=[G];
+  Q:=Image(ff.factorhom,G);
+  Q:=Filtered(CompositionSeries(Q),x->Size(x)<Size(Q));
+  Append(ser,List(Q,x->PreImage(ff.factorhom,x)));
+  Q:=CompositionSeries(Image(ff.pcisom,ff.radical));
+  Q:=Q{[2..Length(Q)]};
+  Q:=List(Q,x->PreImage(ff.pcisom,x));
+  Append(ser,Q);
+  return ser;
 end);
