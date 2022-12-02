@@ -3679,3 +3679,136 @@ local ff,ser,Q;
   Append(ser,Q);
   return ser;
 end);
+
+
+#############################################################################
+##
+#F  IdentificationHybridGroup(<D>,<el>) . . . . .  class invariants for el in G
+##
+##
+IdentificationHybridGroup := function(D,el)
+local hom,pa,sel,eq,t;
+
+  hom:=FittingFreeLiftSetup(D.group).factorhom;
+  pa:=[Order(el)];
+  sel:=Filtered([1..Length(D.patterns)],x->D.patterns[x]{[1..Length(pa)]}=pa);
+  eq:=fail;
+  while Length(sel)>1 do
+    t:=List(sel,x->D.patterns[x][Length(pa)+1][1]);
+    if Length(Set(t))>1 then Error("different");fi;
+    if t[1]="QS" then
+      if eq=fail then eq:=ImagesRepresentative(hom,el);fi;
+      Add(pa,["QS",CycleStructurePerm(eq)]);
+    elif t[1]="QC" then
+      if eq=fail then eq:=ImagesRepresentative(hom,el);fi;
+      # only test in relevant classes
+      t:=Set(List(sel,x->D.patterns[x][Length(pa)+1][2]));
+      Add(pa,["QC",t[PositionProperty(D.hyfacclass{t},y->eq in y)]]);
+    elif t[1]="CR" then
+      Add(pa,["CR",TFCanonicalClassRepresentative(D.group,[el]:
+        candidatenums:=sel)[1][2]]);
+    else
+      Error("command?");
+    fi;
+
+    sel:=Filtered(sel,x->D.patterns[x]{[1..Length(pa)]}=pa);
+  od;
+  return sel[1];
+
+end;
+
+
+#############################################################################
+##
+#M  DxPreparation(<G>,<D>)
+##
+InstallMethod(DxPreparation,"hybrid",true,[IsHybridGroup,IsRecord],0,
+function(G,D)
+local i,j,enum,cl,pats,pa,sel,np,hom,q;
+  D.identification:=IdentificationHybridGroup;
+  D.rationalidentification:=IdentificationGenericGroup;
+  D.ClassMatrixColumn:=StandardClassMatrixColumn;
+
+  hom:=FittingFreeLiftSetup(D.group).factorhom;
+  q:=Image(hom,D.group);
+  D.hyfacclass:=ConjugacyClasses(q);
+
+  cl:=D.classes;
+
+  # prepare patterns
+  pats:=[];
+  for i in [1..Length(cl)] do
+    pats[i]:=[Order(Representative(cl[i]))];
+  od;
+
+  # cycle structure in factor
+  for pa in Set(pats) do
+    sel:=Filtered([1..Length(pats)],x->pats[x]=pa);
+    if Length(sel)>1 then
+      np:=List(sel,x->CycleStructurePerm(ImagesRepresentative(hom,Representative(cl[x]))));
+      if Length(Set(np))>1 then
+        for i in [1..Length(sel)] do
+          j:=sel[i];
+          Add(pats[j],["QS",np[i]]);
+        od;
+      fi;
+    fi;
+  od;
+
+  # conjugacyClasses in factor
+  for pa in Set(pats) do
+    sel:=Filtered([1..Length(pats)],x->pats[x]=pa);
+    if Length(sel)>1 then
+      np:=List(sel,x->ImagesRepresentative(hom,Representative(cl[x])));
+      np:=List(np,x->PositionProperty(D.hyfacclass,y->x in y));
+      if Length(Set(np))>1 then
+        for i in [1..Length(sel)] do
+          j:=sel[i];
+          Add(pats[j],["QC",np[i]]);
+        od;
+      fi;
+    fi;
+  od;
+
+  # canonical rep
+  for pa in Set(pats) do
+    sel:=Filtered([1..Length(pats)],x->pats[x]=pa);
+    if Length(sel)>1 then
+      np:=List(sel,x-> TFCanonicalClassRepresentative(D.group,
+        [Representative(cl[x])])[1][2]);
+      if Length(Set(np))>1 then
+        for i in [1..Length(sel)] do
+          j:=sel[i];
+          Add(pats[j],["CR",np[i]]);
+        od;
+      fi;
+    fi;
+  od;
+
+  D.patterns:=pats;
+
+  D.ids:=[];
+  D.rids:=[];
+  for i in D.classrange do
+    D.ids[i]:=D.identification(D,D.classreps[i]);
+    D.rids[i]:=D.rationalidentification(D,D.classreps[i]);
+  od;
+
+  if IsDxLargeGroup(G) then
+    D.ClassElement:=ClassElementLargeGroup;
+  else
+    D.ClassElement:=ClassElementSmallGroup;
+    enum:=Enumerator(G);
+    D.enum:=enum;
+    D.classMap:=List([1..Size(G)],i->D.klanz);
+    for j in [1..D.klanz-1] do
+      for i in Orbit(G,Representative(cl[j])) do
+        D.classMap[Position(D.enum,i)]:=j;
+      od;
+    od;
+  fi;
+
+  return D;
+
+end);
+
