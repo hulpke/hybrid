@@ -3547,6 +3547,31 @@ local a;
   fi;
 end);
 
+
+#############################################################################
+##
+#M  IsomorphismPcGroup( <G> ) . . . . . . . . . . .  hybrid group as pc group
+##
+InstallMethod( IsomorphismPcGroup, true, [ IsHybridGroup ], 0,
+function( G )
+    local   iso,  A,  pcgs,p,i;
+
+  if not IsSolvableGroup(G) then Error("not solvable");fi;
+  pcgs:=Pcgs(G);
+  if not IsPcgs( pcgs )  then
+    return fail;
+  fi;
+
+  # Construct the pcp group <A> and the bijection between <A> and <G>.
+  A:=PcGroupWithPcgs(pcgs);
+
+  iso := GroupHomomorphismByImagesNC( G, A, pcgs, GeneratorsOfGroup( A ) );
+  SetIsBijective( iso, true );
+
+  return iso;
+end );
+
+
 InstallMethod(Random,"hybrid groups",true,[IsHybridGroup],0,
 function(G)
 local ffs,r;
@@ -3679,6 +3704,8 @@ local ff,ser,Q;
   Append(ser,Q);
   return ser;
 end);
+
+
 
 
 #############################################################################
