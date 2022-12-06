@@ -247,7 +247,7 @@ local fam,inv,prd;
     return elm![3];
   elif IsOne(elm![1]) then
     inv:=HybridGroupElement(fam,fam!.factorone,Inverse(elm![2]));
-  # keep the old code in fopr debugging purposes
+  # keep the old code in for debugging purposes
   elif false then
      if IsBound(fam!.quickermult) and fam!.quickermult<>fail
         and not ValueOption("notranslate")=true then
@@ -738,8 +738,20 @@ end);
 InstallMethod(Comm,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(a,b)
-  # in experimenst this weird evaluation is faster
-  return Inverse(a)*(Inverse(b)*a)*b;
+local c,fam;
+  fam:=FamilyObj(a);
+  if IsOne(a![1]) then
+    #return Inverse(a)*a^b;
+    c:=a^b;
+    return HybridGroupElement(fam,fam!.factorone,Inverse(a![2])*c![2]);
+  elif IsOne(b![1]) then
+    #return Inverse(b)^a*b;
+    c:=Inverse(b)^a;
+    return HybridGroupElement(fam,fam!.factorone,c![2]*b![2]);
+  else
+    # in experimenst this weird evaluation is faster
+    return Inverse(a)*(Inverse(b)*a)*b;
+  fi;
 end);
 
 HybridGroupCocycle:=function(arg)
