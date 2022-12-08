@@ -3676,6 +3676,10 @@ local a,c;
   a:=ImagesRepresentative(t!.nat,elm);
   c:=PositionCanonical(t!.qt,a);
   if c=fail then return fail;fi;
+  # Do we need to work in kernel?
+  if Length(t!.kt)=1 then
+    return c;
+  fi;
   a:=a/t!.qt[c]; # factor elm
   elm:=elm/t!.qtr[c];
   a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
