@@ -34,6 +34,9 @@ InstallTrueMethod( IsGeneratorsOfMagmaWithInverses,
   IsHybridGroupElementCollection );
 fi;
 
+InstallTrueMethod( CanComputeSizeAnySubgroup,
+  IsHybridGroup );
+
 DeclareRepresentation("IsHybridGroupElementDefaultRep",
   IsPositionalObjectRep and IsHybridGroupElement,[]);
 
@@ -1618,7 +1621,7 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of,sz,isorec;
+  xker,xkerw,addker,dowords,ffam,of,sz,isorec,prelms;
 
   if HasSize(G) then 
     sz:=Size(G);
@@ -1681,10 +1684,16 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fp:=Range(iso);
 
   if dowords then
-    addker:=function(w)
-    local img,i,part;
+    addker:=function(arg)
+    local w,img,i,part;
       if Size(sub)=sz then return;fi; # not needed
-      img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
+      w:=arg[1];
+      if Length(arg)>1 then
+        img:=arg[2];
+      else
+	img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
+      fi;
+  #Print(w," yields ",img,"\n");
       if not img![2] in sub then
         Add(ker,img);
         Add(kerw,w);
@@ -1733,7 +1742,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
         #ImagesRepresentative(iso,top[i])),
         isorec.apply(top[i])),
         FreeGeneratorsOfFpGroup(fp),map);
-      addker(j);
+# test: avoid these costly expressions 
+# addker(j);
       addker(gfg[sel[i]]^Order(top[i]));
     fi;
   od;
@@ -1741,14 +1751,30 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
     and Size(sub)<sz and Size(factor)>1 then
 
-    # presentation
-    j:=IsomorphismFpGroupByGenerators(factor,top);
-    j:=Range(j);
-    for i in RelatorsOfFpGroup(j) do
+    # G-elements for fp generators
+    prelms:=List(map,x->MappedWord(x,gfg{sel},GeneratorsOfGroup(G){sel}));
+    for i in RelatorsOfFpGroup(fp) do
       if Size(sub)<sz then
-        i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
-        addker(i);
+        addker(MappedWord(i,FreeGeneratorsOfFpGroup(fp),map),
+	       MappedWord(i,FreeGeneratorsOfFpGroup(fp),prelms));
       fi;
+    od;
+
+    ## presentation
+    #j:=IsomorphismFpGroupByGenerators(factor,top);
+    #j:=Range(j);
+    #for i in RelatorsOfFpGroup(j) do
+    #  if Size(sub)<sz then
+    #    i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
+    #    addker(i);
+    #  fi;
+    #od;
+
+  elif Size(sub)<sz then
+    # evaluate relators
+    for i in List(RelatorsOfFpGroup(fp),
+                      x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
+      addker(i);
     od;
   fi;
 
@@ -1759,13 +1785,6 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     od;
   fi;
 
-  # evaluate relators
-  if Size(sub)<sz then
-    for i in List(RelatorsOfFpGroup(fp),
-                      x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
-      addker(i);
-    od;
-  fi;
 
   # short words
   if Size(sub)<sz and Length(sel)>0 and dowords then
@@ -1775,14 +1794,16 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     od;
   fi;
 
-  # now form normal closure
-  i:=1;
-  while i<=Length(ker) and Size(sub)<sz do
-    for j in gfg do
-      addker(kerw[i]^j);
+  # form normal closure (only needed if not normal)
+  if Length(top)>0 and not IsNormal(G,SubgroupNC(G,ker)) then
+    i:=1;
+    while i<=Length(ker) and Size(sub)<sz do
+      for j in gfg do
+	addker(kerw[i]^j);
+      od;
+      i:=i+1;
     od;
-    i:=i+1;
-  od;
+  fi;
 
   if dowords then
     ker:=Concatenation(ker,xker);
@@ -1978,6 +1999,11 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   od;
 
   new:=Group(gens);
+  if ForAny(gens,IsOne) then
+    fam!.fullGensQuot:=new;
+    gens:=Filtered(gens,x->not IsOne(x));
+    new:=Group(gens);
+  fi;
   nfam!.wholeGroup:=new;
   return new;
 end;
@@ -2124,6 +2150,12 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
 
   # check whether it is on the standard generators of the hybrid group
   if not IsBound(hom!.onStandardGens) then
+    # kill identity generators
+    e:=Filtered([1..Length(mgi[1])],x->not IsOne(mgi[1][x]));
+    if e<>[1..Length(mgi[1])] then
+      mgi:=[mgi[1]{e},mgi[2]{e}];
+    fi;
+
     hb:=[Filtered(mgi[1],x->IsOne(x![2]) and not IsOne(x![1])),
          Filtered(mgi[1],x->IsOne(x![1]) and not IsOne(x![2]))];
     hom!.onStandardGens:=false;
@@ -3083,7 +3115,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
       Print("Cover of size ",Size(cov)," extends by dimension ",
         ext[Length(ext)],"\n");
       Add(newq,[cov,ker,ext[Length(ext)],
-        QuotientHybrid(cov,ker:dowords:=false)]);
+        QuotientHybrid(cov,ker:dowords:=false)!.fullGensQuot]);
     else
       Print("Cover of size ",Size(cov)," does not extend\n");
       Add(ext,0);
@@ -3540,6 +3572,17 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
   return a;
 end);
 
+InstallMethod(RestrictedMapping,"hybrid group factorhom",
+  CollFamSourceEqFamElms,[IsGroupGeneralMapping,IsHybridGroup],SUM_FLAGS,
+function(hom,sub)
+local ff,p;
+  p:=Parent(sub);
+  if not IsIdenticalObj(p,Source(hom)) then TryNextMethod();fi;
+  ff:=FittingFreeSubgroupSetup(p,sub);
+  if not IsIdenticalObj(ff.parentffs.factorhom,hom) then TryNextMethod();fi;
+  return ff.rest;
+end);
+
 InstallMethod( ExponentsOfPcElement, "hybrid", IsCollsElms,
       [ IsPcgs and IsHybridGroupElementCollection, IsHybridGroupElement ], 0,
 function(pcgs,elm)
@@ -3627,7 +3670,21 @@ DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
 InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
   [IsHybridGroup,IsHybridGroup],0,
 function(G,S)
-local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t;
+local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache;
+
+  # cache transversals
+  if IsBound(G!.storedTransversals) then
+    cache:=G!.storedTransversals;
+    for a in cache do
+      if a[1]=Size(S) and ForAll(GeneratorsOfGroup(S),x->x in a[2]) then
+        return a[3];
+      fi;
+    od;
+  else
+    cache:=[];
+    G!.storedTransversals:=cache;
+  fi;
+
   fam:=FamilyObj(One(G));
   fg:=FittingFreeSubgroupSetup(fam!.wholeGroup,G);
   fs:=FittingFreeSubgroupSetup(fam!.wholeGroup,S);
@@ -3641,7 +3698,8 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t;
   nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
 
   qt:=RightTransversal(qg,qs);
-  qtr:=List(qt,x->PreImagesRepresentative(nag,x));
+  #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
+  qtr:=[];
   pci:=fg.parentffs.pcisom;
   kt:=RightTransversal(Image(pci,fg.ker),Image(pci,fs.ker));
 
@@ -3659,6 +3717,7 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t;
             kt:=kt,
             coe:=[Length(qt),Length(kt)]
 	    ));
+  Add(cache,[Size(S),S,t]);
   return t;
 end);
 
@@ -3668,20 +3727,31 @@ function(t,num)
 local fam,c;
   fam:=t!.efam;
   c:=CoefficientsMultiadic(t!.coe,num-1)+1;
+  if not IsBound(t!.qtr[c[1]]) then
+    t!.qtr[c[1]]:=PreImagesRepresentative(t!.nag,t!.qt[c[1]]);
+  fi;
   return HybridGroupElement(fam,fam!.factorone,t!.kt[c[2]])*t!.qtr[c[1]];
 end );
 
 BindGlobal("HybTransPos",function(t,elm,cano)
 local a,c;
   a:=ImagesRepresentative(t!.nat,elm);
-  c:=PositionCanonical(t!.qt,a);
-  if c=fail then return fail;fi;
-  # Do we need to work in kernel?
-  if Length(t!.kt)=1 then
-    return c;
+  if Length(t!.qt)>1 then
+    c:=PositionCanonical(t!.qt,a);
+    if c=fail then return fail;fi;
+    # Do we need to work in kernel?
+    if Length(t!.kt)=1 then
+      return c;
+    fi;
+    a:=a/t!.qt[c]; # factor elm
+    if not IsBound(t!.qtr[c]) then
+      t!.qtr[c]:=PreImagesRepresentative(t!.nag,t!.qt[c]);
+    fi;
+    elm:=elm/t!.qtr[c];
+  else
+    c:=1;
   fi;
-  a:=a/t!.qt[c]; # factor elm
-  elm:=elm/t!.qtr[c];
+
   a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
   elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor, 
   # coset remains the same
@@ -3706,6 +3776,15 @@ function(t,elm)
   return HybTransPos(t,elm,false);
 end);
 
+InstallMethod(DoubleCosetRepsAndSizes,"hybrid, use factorhom",IsFamFamFam,
+  [IsHybridGroup,IsHybridGroup,IsHybridGroup],0,
+function(G,U,V)
+local ff;
+  ff:=FittingFreeLiftSetup(G);
+  return CalcDoubleCosets(G,U,V:usequotient:=ff.factorhom);
+end);
+
+
 InstallMethod(CompositionSeries,"hybrid",true,[IsHybridGroup],0,
 function(G)
 local ff,ser,Q;
@@ -3721,7 +3800,35 @@ local ff,ser,Q;
   return ser;
 end);
 
+#############################################################################
+##
+#M  AscendingChainOp(<G>,<pnt>) . . . approximation of
+##
+InstallMethod(AscendingChainOp,"Hybrid Group",IsIdenticalObj,
+  [IsHybridGroup,IsHybridGroup],0,
+function(G,U)
+local ff,hom,q,c,bound,cheap;
+  bound:=(10*LogInt(Size(G),10)+1)*Maximum(Factors(Size(G)));
+  bound:=Minimum(bound,20000);
+  cheap:=ValueOption("cheap")=true;
+  c:=ValueOption("refineIndex");
+  if IsInt(c) then
+    bound:=c;
+  fi;
 
+  ff:=FittingFreeLiftSetup(G);
+  hom:=ff.factorhom;
+  q:=AscendingChain(Image(hom,G),Image(hom,U));
+  c:=List(q,x->PreImage(hom,x));
+  if cheap<>true and IndexNC(c[1],U)>bound then
+    Error("ascending chain in kernel");
+  fi;
+  if Size(c[1])>Size(U) then
+    c:=Concatenation([U],c);
+  fi;
+  Info(InfoCoset,2,"Indices",List([1..Length(c)-1],i->Index(c[i],c[i+1])));
+  return c;
+end);
 
 
 #############################################################################
