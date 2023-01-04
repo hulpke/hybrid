@@ -209,7 +209,7 @@ local fam,inv,junk,let,i,j,ran,invs,prd,inliste,pos,wfam;
   end;
 
   pos:=fail;
-  prd:=fail;
+  prd:=[];
   let:=LetterRepAssocWord(elm![1]);
   i:=Length(let);
   while i>0 do
@@ -228,13 +228,16 @@ local fam,inv,junk,let,i,j,ran,invs,prd,inliste,pos,wfam;
 
     inv:=invs[pos][2];
 #Print(let{[i-j+1..i]},inv,"\n");
-    if prd=fail then
-      prd:=inv;
-    else
-      prd:=prd*inv;
-    fi;
+    Add(prd,inv![1]);
+    Add(prd,inv![2]);
+    #if prd=fail then
+    #  prd:=inv;
+    #else
+    #  prd:=prd*inv;
+    #fi;
     i:=i-j;
   od;
+  prd:=HybridNormalFormProduct(fam,prd);
   elm![5]:=prd;
   return prd;
 
@@ -250,26 +253,30 @@ local fam,inv,prd;
     return elm![3];
   elif IsOne(elm![1]) then
     inv:=HybridGroupElement(fam,fam!.factorone,Inverse(elm![2]));
-  # keep the old code in for debugging purposes
-  elif false then
-     if IsBound(fam!.quickermult) and fam!.quickermult<>fail
-        and not ValueOption("notranslate")=true then
-      inv:=fam!.backtranslate(fam!.quickermult(elm)^-1);
-    else
 
-      # calculate a^-1*junk
-      # the collection is guaranteed to happen in the product routine
-      inv:=\*(HybridGroupElement(fam,InverseOp(elm![1]),fam!.normalone),
-        One(fam):notranslate);
-      # form (a,b)*(a^-1,1)=(1,c), then (a,b)^-1=(a^-1,c^-1)
-      prd:=elm*inv;
-      inv:=inv*HybridGroupElement(fam,fam!.factorone,InverseOp(prd![2]));
-      #if not IsOne(inv*elm) then Error("invbug");fi;
-    fi;
+#  # keep the old code in for debugging purposes
+#  elif false then
+#     if IsBound(fam!.quickermult) and fam!.quickermult<>fail
+#        and not ValueOption("notranslate")=true then
+#      inv:=fam!.backtranslate(fam!.quickermult(elm)^-1);
+#    else
+#
+#      # calculate a^-1*junk
+#      # the collection is guaranteed to happen in the product routine
+#      inv:=\*(HybridGroupElement(fam,InverseOp(elm![1]),fam!.normalone),
+#        One(fam):notranslate);
+#      # form (a,b)*(a^-1,1)=(1,c), then (a,b)^-1=(a^-1,c^-1)
+#      prd:=elm*inv;
+#      inv:=inv*HybridGroupElement(fam,fam!.factorone,InverseOp(prd![2]));
+#      #if not IsOne(inv*elm) then Error("invbug");fi;
+#    fi;
 
   else
     inv:=HybridGroupElement(fam,fam!.factorone,Inverse(elm![2]))
       *HybridTopInverse(elm);
+#  else    DOES NOT WORK!
+#    inv:=HybridNormalFormProduct(fam,
+#      [One(elm![1]),Inverse(elm![2]),Inverse(elm![1]),fam!.normalone]);
   fi;
   elm![3]:=inv;
   return inv;
@@ -327,11 +334,55 @@ local g,gf,m,mats,a,pcgs;
 end);
 
 BindGlobal("HybridGroupAutrace",function(fam,m,f)
-  local i,mm;
-#start1:=Runtime();
+  local i,mm,autcache,inliste,pos,lf,j,aut;
+
+  # process length 1 fast, worth doing since it is frequent
+  if Length(f)=1 then
+    if fam!.autmats<>fail then
+      mm:=ExponentsOfPcElement(fam!.autspcgs,m)*One(fam!.autgf);
+      if f[1]>0 then mm:=mm*fam!.autmats[f[1]];
+      else mm:=mm*fam!.autmatsinv[-f[1]];fi;
+      return PcElementByExponents(fam!.autspcgs,List(mm,Int));
+    else
+      if f[1]>0 then return ImagesRepresentative(fam!.auts[f[1]],m);
+      else return ImagesRepresentative(fam!.autsinv[-f[1]],m);fi;
+    fi;
+  fi;
+
+# Print("Autrace ",Length(f),"\n");
+    if not IsBound(fam!.autcache) then
+      autcache:=[];
+      fam!.autcache:=autcache;
+      # store the single automorphisms
+      for i in [1..Length(GeneratorsOfGroup(fam!.presentation.group))] do
+        if fam!.autmats<>fail then
+          Error("autmats init");
+        else
+          AddSet(autcache,Immutable([[i],fam!.auts[i]]));
+          AddSet(autcache,Immutable([[-i],fam!.autsinv[i]]));
+        fi;
+      od;
+
+    else
+      autcache:=fam!.autcache;
+    fi;
+
+    # test and set position
+    inliste:=function(l)
+    local p;
+      p:=PositionSorted(autcache,Immutable([l]));
+      if p>0 and p<=Length(autcache) and autcache[p][1]=l then
+        pos:=p;
+        return true;
+      else
+        return false;
+      fi;
+    end;
+
     if IsAssocWord(f) then
       f:=LetterRepAssocWord(f);
     fi;
+
     if fam!.autmats<>fail then
       mm:=ExponentsOfPcElement(fam!.autspcgs,m)*One(fam!.autgf);
       mm:=ImmutableVector(fam!.autgf,mm);
@@ -341,12 +392,36 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
       od;
       mm:=PcElementByExponents(fam!.autspcgs,List(mm,Int));
       return mm;
+    else
+
+      pos:=fail;
+      i:=1;
+      lf:=Length(f);
+      while i<=lf do
+        # largest stored Anfangsst"uck
+        j:=0;
+        while i+j<=lf and inliste(f{[i..i+j]}) do
+          j:=j+1;
+        od;
+        # shall we store one longer?
+        if i+j+1<lf and j<4 and Length(autcache)<10000 then
+          aut:=autcache[pos][2]*autcache[PositionSorted(autcache,[f{[i+j]}])][2];
+          SpeedupDataPcHom(aut);
+          AddSet(autcache,Immutable([f{[i..i+j]},aut]));
+          inliste(f{[i..i+j]});
+          j:=j+1;
+        fi;
+
+        m:=ImagesRepresentative(autcache[pos][2],m);
+        i:=i+j;
+      od;
+
+#      for i in f do
+#        if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
+#        else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
+#      od;
+      return m;
     fi;
-    for i in f do
-      if i>0 then m:=ImagesRepresentative(fam!.auts[i],m);
-      else m:=ImagesRepresentative(fam!.autsinv[-i],m);fi;
-    od;
-    return m;
   end);
 
 HybridOldMultRoutine:=function(a,b)
@@ -442,21 +517,12 @@ end;
 #  return w;
 #end;
 
-InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
-  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
-function(a,b)
-local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
+
+BindGlobal("HybridNormalFormProduct",function(fam,list)
+local rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
       dag,sta,cancel,xc,addbot,bot,sweep,botsh,pto,diff,muss,w,q;
 
-  fam:=FamilyObj(a);
 
-  if IsBound(fam!.quickermult) and fam!.quickermult<>fail
-    and not ValueOption("notranslate")=true then
-    return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
-  fi;
-
-  x:=LetterRepAssocWord(a![1]*b![1]);
-  bot:=[]; # tail entries, *after* which position the tail bit happens.
   addbot:=function(pos,val)
   local p;
     p:=PositionSorted(bot,[pos]);
@@ -521,19 +587,29 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
     od;
   end;
 
-  if not IsOne(b![2]) then
-    # do this first, since addbot moves in from the left
-    addbot(Length(x),b![2]);
-  fi;
-  if not IsOne(a![2]) then
-    if Length(x)=Length(a![1])+Length(b![1]) then
-      # no cancellation -- just enter
-      addbot(Length(a![1]),a![2]);
-    else
-      # move tail past b first, so it is out of the way of cancellation
-      addbot(Length(x),HybridGroupAutrace(fam,a![2],b![1]));
+  #x:=LetterRepAssocWord(a![1]*b![1]);
+  x:=[];
+  bot:=[]; # tail entries, *after* which position the tail bit happens.
+  for p in [1,3..Length(list)-1] do
+    Append(x,LetterRepAssocWord(list[p]));
+    if not IsOne(list[p+1]) then
+      addbot(Length(x),list[p+1]);
     fi;
-  fi;
+  od;
+
+#  if not IsOne(b![2]) then
+#    # do this first, since addbot moves in from the left
+#    addbot(Length(x),b![2]);
+#  fi;
+#  if not IsOne(a![2]) then
+#    if Length(x)=Length(a![1])+Length(b![1]) then
+#      # no cancellation -- just enter
+#      addbot(Length(a![1]),a![2]);
+#    else
+#      # move tail past b first, so it is out of the way of cancellation
+#      addbot(Length(x),HybridGroupAutrace(fam,a![2],b![1]));
+#    fi;
+#  fi;
 
 #if ValueOption("old")<>true then muss:=\*(a,b:old);fi;
 #if ValueOption("old")<>true and muss<>MyVerify(fam,x,bot:old) then
@@ -645,18 +721,28 @@ local fam,rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
 
   x:=HybridGroupElement(fam,x,y);
 
-  #if IsBound(fam!.quickermult) and fam!.quickermult<>fail
-  #  and not ValueOption("notranslate")=true 
-  #  and x<>fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b)) then
-  #  Error("MUL");
-  #fi;
-
   return x;
+end);
+
+InstallMethod(\*,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(a,b)
+local fam;
+
+  fam:=FamilyObj(a);
+
+  if IsBound(fam!.quickermult) and fam!.quickermult<>fail
+    and not ValueOption("notranslate")=true then
+    return fam!.backtranslate(fam!.quickermult(a)*fam!.quickermult(b));
+  fi;
+
+  return HybridNormalFormProduct(fam,[a![1],a![2],b![1],b![2]]);
 end);
 
 BindGlobal("HybridConjugate",function(x,y)
 local fam,h,t,a,yinv,rawinv,tz;
   fam:=FamilyObj(x);
+
   if IsOne(x![2]) then
     if IsOne(y![2]) then
       # check whether there is basically a rewriting rule for this
@@ -703,45 +789,55 @@ local fam,h,t,a,yinv,rawinv,tz;
   return a;
 end);
 
-TC:=function(a,b)
-local fam,ax,ay,bx,by,c;
-  fam:=FamilyObj(a);
-  ax:=HybridGroupElement(fam,a![1],fam!.normalone);
-  bx:=HybridGroupElement(fam,b![1],fam!.normalone);
-  ay:=HybridGroupElement(fam,fam!.factorone,a![2]);
-  #by:=HybridGroupElement(fam,fam!.factorone,b![2]);
-  c:=HybridGroupElement(fam,fam!.factorone,(ay*bx)![2]^b![2]);
-  return Inverse(b)*ax*b*c;
-end;
+#TC:=function(a,b)
+#local fam,ax,ay,bx,by,c;
+#  fam:=FamilyObj(a);
+#  ax:=HybridGroupElement(fam,a![1],fam!.normalone);
+#  bx:=HybridGroupElement(fam,b![1],fam!.normalone);
+#  ay:=HybridGroupElement(fam,fam!.factorone,a![2]);
+#  #by:=HybridGroupElement(fam,fam!.factorone,b![2]);
+#  c:=HybridGroupElement(fam,fam!.factorone,(ay*bx)![2]^b![2]);
+#  return Inverse(b)*ax*b*c;
+#end;
 
 InstallMethod(\^,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(b,a)
-local fam,c;
+local fam,c,h;
   fam:=FamilyObj(a);
-  if IsOne(b![1]) then
-    if not IsOne(a![1]) then
-      if IsOne(a![2]) then
-        c:=a;
-      else
-        c:=HybridGroupElement(fam,a![1],fam!.normalone);
-      fi;
-      b:=b*c;
-    fi;
-    b:=b![2]; # front stays the same and cancels off
-    if not IsOne(a![2]) then
-      b:=b^a![2];
-    fi;
-    return HybridGroupElement(fam,fam!.factorone,b);
+
+  if a![3]<>false then
+    return HybridNormalFormProduct(fam,
+      [a![3]![1],a![3]![2],b![1],b![2],a![1],a![2]]);
   else
-    return Inverse(a)*b*a;
+    h:=HybridTopInverse(a);
+    return HybridNormalFormProduct(fam,[fam!.factorone,Inverse(a![2]),
+      h![1],h![2],b![1],b![2],a![1],a![2]]);
   fi;
+
+#  if IsOne(b![1]) then
+#    if not IsOne(a![1]) then
+#      if IsOne(a![2]) then
+#        c:=a;
+#      else
+#        c:=HybridGroupElement(fam,a![1],fam!.normalone);
+#      fi;
+#      b:=b*c;
+#    fi;
+#    b:=b![2]; # front stays the same and cancels off
+#    if not IsOne(a![2]) then
+#      b:=b^a![2];
+#    fi;
+#    return HybridGroupElement(fam,fam!.factorone,b);
+#  else
+#    return Inverse(a)*b*a;
+#  fi;
 end);
 
 InstallMethod(Comm,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
 function(a,b)
-local c,fam;
+local c,fam,l;
   fam:=FamilyObj(a);
   if IsOne(a![1]) then
     #return Inverse(a)*a^b;
@@ -752,8 +848,26 @@ local c,fam;
     c:=Inverse(b)^a;
     return HybridGroupElement(fam,fam!.factorone,c![2]*b![2]);
   else
-    # in experimenst this weird evaluation is faster
-    return Inverse(a)*(Inverse(b)*a)*b;
+    l:=[];
+    if a![3]<>false then
+      Append(l,[a![3]![1],a![3]![2]]);
+    else
+      c:=HybridTopInverse(a);
+      Append(l,[fam!.factorone,Inverse(a![2]),c![1],c![2]]);
+    fi;
+    if b![3]<>false then
+      Append(l,[b![3]![1],b![3]![2]]);
+    else
+      c:=HybridTopInverse(b);
+      l[Length(l)]:=l[Length(l)]*Inverse(b![2]);
+      Append(l,[c![1],c![2]]);
+    fi;
+    Append(l,[a![1],a![2]]);
+    Append(l,[b![1],b![2]]);
+    return HybridNormalFormProduct(fam,l);
+
+#    # in experimenst this weird evaluation is faster
+#    return Inverse(a)*(Inverse(b)*a)*b;
   fi;
 end);
 
