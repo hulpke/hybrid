@@ -128,6 +128,26 @@ local has;
   Print(">");
 end);
 
+InstallMethod(String,"hybrid group elements",
+  [IsHybridGroupElementDefaultRep],0,
+function(elm)
+local has,s;
+  s:="<";
+  has:=false;
+  if not IsOne(elm![1]) then
+    has:=true;
+    Append(s,String(elm![1]));
+  fi;
+  if not IsOne(elm![2]) then
+    if has then Append(s,"*");fi;
+    has:=true;
+    Append(s,String(elm![2]));
+  fi;
+  if not has then Append(s,"one");fi;
+  Append(s,">");
+  return s;
+end);
+
 InstallMethod(One,"hybrid group elements",
   [IsHybridGroupElementDefaultRep],0,
   elm->One(FamilyObj(elm)));
@@ -3784,7 +3804,7 @@ DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
 InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
   [IsHybridGroup,IsHybridGroup],0,
 function(G,S)
-local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache;
+local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
 
   # cache transversals
   if IsBound(G!.storedTransversals) then
@@ -3809,7 +3829,20 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache;
 
   a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
   qs:=SubgroupNC(Range(nat),a);
+  # Make qs with nice base (short orbits first)
+  if IsPermGroup(qs) then
+    orb:=ShallowCopy(Orbits(qs,MovedPoints(qs)));
+    SortBy(orb,Length);
+    StabChain(qs,rec(base:=Concatenation(orb)));
+  fi;
+
   nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
+
+  # now reconstruct inverse with good generators
+  lg:=StrongGeneratorsStabChain(StabChain(qs));
+  nasi:=GroupGeneralMappingByImagesNC(qs,S,lg,
+    List(lg,x->PreImagesRepresentative(nas,x)));
+  StabChainMutable(nasi,rec(base:=BaseStabChain(StabChain(qs))));
 
   qt:=RightTransversal(qg,qs);
   #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
@@ -3826,6 +3859,7 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache;
             nat:=nat,
             nag:=nag,
             nas:=nas,
+            nasi:=nasi,
             qt:=qt,
             qtr:=qtr,
             kt:=kt,
@@ -3866,7 +3900,9 @@ local a,c;
     c:=1;
   fi;
 
-  a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
+  #a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
+  a:=ImagesRepresentative(t!.nasi,a);
+
   elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor, 
   # coset remains the same
   if not IsOne(elm![1]) then return fail;fi;
@@ -3940,7 +3976,7 @@ local ff,hom,q,c,bound,cheap;
   if Size(c[1])>Size(U) then
     c:=Concatenation([U],c);
   fi;
-  Info(InfoCoset,2,"Indices",List([1..Length(c)-1],i->Index(c[i],c[i+1])));
+  Info(InfoCoset,2,"Indices",List([1..Length(c)-1],i->Index(c[i+1],c[i])));
   return c;
 end);
 
