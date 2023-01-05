@@ -376,7 +376,8 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
       # store the single automorphisms
       for i in [1..Length(GeneratorsOfGroup(fam!.presentation.group))] do
         if fam!.autmats<>fail then
-          Error("autmats init");
+          AddSet(autcache,Immutable([[i],fam!.autmats[i]]));
+          AddSet(autcache,Immutable([[-i],fam!.autmatsinv[i]]));
         else
           AddSet(autcache,Immutable([[i],fam!.auts[i]]));
           AddSet(autcache,Immutable([[-i],fam!.autsinv[i]]));
@@ -406,10 +407,33 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
     if fam!.autmats<>fail then
       mm:=ExponentsOfPcElement(fam!.autspcgs,m)*One(fam!.autgf);
       mm:=ImmutableVector(fam!.autgf,mm);
-      for i in f do
-        if i>0 then mm:=mm*fam!.autmats[i];
-        else mm:=mm*fam!.autmatsinv[-i];fi;
+
+      pos:=fail;
+      i:=1;
+      lf:=Length(f);
+      while i<=lf do
+        # largest stored Anfangsst"uck
+        j:=0;
+        while i+j<=lf and inliste(f{[i..i+j]}) do
+          j:=j+1;
+        od;
+        # shall we store one longer?
+        if i+j+1<lf and j<4 and Length(autcache)<10000 then
+          aut:=autcache[pos][2]*autcache[PositionSorted(autcache,[f{[i+j]}])][2];
+          #SpeedupDataPcHom(aut);
+          AddSet(autcache,Immutable([f{[i..i+j]},aut]));
+          inliste(f{[i..i+j]});
+          j:=j+1;
+        fi;
+
+        mm:=mm*autcache[pos][2];
+        i:=i+j;
       od;
+
+      #for i in f do
+      #  if i>0 then mm:=mm*fam!.autmats[i];
+      #  else mm:=mm*fam!.autmatsinv[-i];fi;
+      #od;
       mm:=PcElementByExponents(fam!.autspcgs,List(mm,Int));
       return mm;
     else
@@ -917,6 +941,7 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
     od;
     aut:=GroupHomomorphismByImagesNC(pcgp,pcgp,pcgs,aut);
     SetIsBijective(aut,true);
+    SpeedupDataPcHom(aut);
     Add(auts,aut);
   od;
 
@@ -928,6 +953,7 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
+  for i in fam!.autsinv do SpeedupDataPcHom(i);od;
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(pcgp);
   fam!.normal:=pcgp;
@@ -4112,3 +4138,128 @@ local i,j,enum,cl,pats,pa,sel,np,hom,q;
 
 end);
 
+
+DeclareAttribute("SpeedupDataPcHom",IsGroupGeneralMappingByPcgs,"mutable");
+
+PatternEnumerateFunction:=function(pat)
+local c;
+  c:=List([1..Length(pat)],x->Product(pat{[x+1..Length(pat)]}));
+  return a->a*c;
+end;
+
+InstallMethod(SpeedupDataPcHom,"pcgs",true,
+  [IsGroupGeneralMappingByPcgs and IsTotal],0,
+function(hom)
+local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
+  g:=Source(hom);
+  if g<>Range(hom) or not IsBijective(hom) then
+    TryNextMethod();
+  fi;
+  r:=fail;
+  if IsBound(g!.automSpeedupData) then
+    r:=g!.automSpeedupData;
+    if r.pcgs<>hom!.sourcePcgs then
+      r:=fail;
+      g:=Group(hom!.sourcePcgs);
+    fi;
+  fi;
+  if r=fail then
+    pcgs:=hom!.sourcePcgs;
+    ro:=RelativeOrders(pcgs);
+    n:=Length(pcgs);
+    i:=n+1;
+    while i>1 and IsElementaryAbelian(Group(pcgs{[i-1..n]})) and
+      IsNormal(g,Subgroup(g,pcgs{[i-1..n]})) do
+      i:=i-1;
+    od;
+    if i=n+1 then Error("none");fi;
+    field:=GF(ro[i]);
+    n:=i-1;
+
+    depths:=[1];
+    if i>1 then
+      # how to split further?
+      a:=Product(ro{[1..n]});
+      # we want to store about 1000 images, so rounded down log base 1000/10
+      a:=RootInt(a,LogInt(a,100))*ro[1];
+
+      # now chunks
+      s:=1;
+      i:=1;
+      while i<=n do
+        while i<=n and Product(ro{[s..i]})<a do
+          i:=i+1;
+        od;
+        Add(depths,i);
+        i:=i+1;
+        s:=i;
+      od;
+    fi;
+    if depths[Length(depths)]<>n+1 then Error("EEE");fi;
+
+    pats:=[];
+    for i in [1..Length(depths)-1] do
+      #a:=Immutable(Set(Cartesian(List(ro{[depths[i]..depths[i+1]-1]},
+      #  x->List([0..x-1])))));
+      #s:=Position(pats,a);
+      #if s<>fail then 
+      #  Add(pats,pats[s]);
+      #  Add(dics,dics[s]);
+      #else
+      #  Add(pats,a);
+      #  s:=NewDictionary(s[1],true);
+      #fi;
+      Add(pats,PatternEnumerateFunction(ro{[depths[i]..depths[i+1]-1]}));
+    od;
+
+    r:=rec(pcgs:=pcgs,
+            field:=field,
+            pats:=pats,
+            depths:=depths);
+
+    g!.automSpeedupData:=r;
+  fi;
+
+  n:=Length(r.pcgs);
+  i:=r.depths[Length(r.depths)];
+  mat:=List(hom!.sourcePcgsImages{[i..n]},
+    x->ExponentsOfPcElement(r.pcgs,x){[i..n]});
+  mat:=ImmutableMatrix(r.field,mat*One(r.field));
+
+  r:=rec(groupData:=r,mat:=mat,vals:=List(r.pats,x->[]));
+  return r;
+end);
+
+InstallMethod( ImagesRepresentative,
+    "for sped-up pc hom",FamSourceEqFamElm,
+        [ IsGroupGeneralMappingByPcgs and IsTotal
+          and HasSpeedupDataPcHom,
+          IsMultiplicativeElementWithInverse and IsNBitsPcWordRep],100,
+function(hom,elm)
+local r,rg,depths,pcgs,n,v,e,i,a,b;
+  r:=SpeedupDataPcHom(hom);
+  rg:=r.groupData;
+  depths:=rg.depths;
+  pcgs:=rg.pcgs;
+  n:=Length(pcgs);
+  v:=OneOfPcgs(pcgs);
+  e:=ExponentsOfPcElement(pcgs,elm);
+  for i in [1..Length(depths)-1] do
+    a:=e{[depths[i]..depths[i+1]-1]};
+    b:=rg.pats[i](a)+1; # patterns start at 0
+    if not IsBound(r.vals[i][b]) then
+      r.vals[i][b]:=LinearCombinationPcgs(
+        hom!.sourcePcgsImages{[depths[i]..depths[i+1]-1]},a);
+    fi;
+    v:=v*r.vals[i][b];
+  od;
+  b:=depths[Length(depths)];
+  a:=e{[b..Length(pcgs)]};
+  a:=ImmutableVector(rg.field,a*One(rg.field))*r.mat;
+  e:=0*e;
+  b:=b-1;
+  for i in [1..Length(a)] do
+    e[b+i]:=Int(a[i]);
+  od;
+  return v*PcElementByExponentsNC(pcgs,e);
+end);
