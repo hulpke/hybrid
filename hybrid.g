@@ -1844,6 +1844,72 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   return j;
 end;
 
+
+InstallMethod(DoFFSS,"hybrid",IsIdenticalObj,
+  [IsHybridGroup and IsFinite,IsHybridGroup],0,
+function(G,U)
+local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens;
+
+  ffs:=FittingFreeLiftSetup(G);
+  if Size(G)<>Size(FamilyObj(One(G))!.wholeGroup) then TryNextMethod();fi;
+
+  pcisom:=ffs.pcisom;
+
+  #rest:=RestrictedMapping(ffs.factorhom,U);
+  RUN_IN_GGMBI:=true; # hack to skip Nice treatment
+  rest:=GroupHomomorphismByImagesNC(U,Range(ffs.factorhom),GeneratorsOfGroup(U),
+    List(GeneratorsOfGroup(U),x->ImagesRepresentative(ffs.factorhom,x)));
+  RUN_IN_GGMBI:=false;
+
+  Assert(1,rest<>fail);
+
+  if HasRecogDecompinfoHomomorphism(ffs.factorhom) then
+    SetRecogDecompinfoHomomorphism(rest,RecogDecompinfoHomomorphism(ffs.factorhom));
+  fi;
+
+  # in radical?
+  if ForAll(MappingGeneratorsImages(rest)[2],IsOne) then
+    ker:=U;
+    # trivial radical
+    if Length(ffs.pcgs)=0 then
+      k:=[];
+    else
+      k:=InducedPcgsByGeneratorsNC(ffs.pcgs,GeneratorsOfGroup(U));
+    fi;
+  elif Length(ffs.pcgs)=0 then
+    # no radical
+    ker:=TrivialSubgroup(G);
+    k:=ffs.pcgs;
+  else
+
+    r:=HybridBits(U);
+    kpc:=r.ker;
+    k:=List(r.kerpcgs,x->PreImagesRepresentative(pcisom,x));
+    k:=InducedPcgsByPcSequenceNC(ffs.pcgs,k);
+    ker:=SubgroupNC(G,k);
+    SetSize(ker,Size(kpc));
+
+  fi;
+
+  SetPcgs(ker,k);
+  SetKernelOfMultiplicativeGeneralMapping(rest,ker);
+  if Length(ffs.pcgs)=0 then
+    r:=[1];
+  else
+    r:=Concatenation(k!.depthsInParent,[Length(ffs.pcgs)+1]);
+  fi;
+
+  r:=rec(parentffs:=ffs,
+            rest:=rest,
+            ker:=ker,
+	    pcgs:=k,
+	    serdepths:=List(ffs.depths,y->First([1..Length(r)],x->r[x]>=y))
+	    );
+
+  return r;
+
+end);
+
 InstallMethod(\in,"hybrid group",IsElmsColls,
   [IsHybridGroupElement,IsGroup],0,
 function(elm,g)
