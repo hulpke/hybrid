@@ -3643,6 +3643,13 @@ local fam,a,b,l,p,hb,sr,e,i,img;
   return a;
 end);
 
+InstallMethod(IsSolvableGroup,"hybrid",
+  [IsGroup and IsHybridGroupElementCollection],0,
+function(G)
+local hb;
+  hb:=HybridBits(G)
+  return IsSolvableGroup(hb.factor);
+end);
 
 InstallMethod(FittingFreeLiftSetup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
@@ -3944,7 +3951,9 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
   lg:=StrongGeneratorsStabChain(StabChain(qs));
   nasi:=GroupGeneralMappingByImagesNC(qs,S,lg,
     List(lg,x->PreImagesRepresentative(nas,x)));
-  StabChainMutable(nasi,rec(base:=BaseStabChain(StabChain(qs))));
+  t:=StabChainMutable(nasi,rec(base:=BaseStabChain(StabChain(qs))));
+  SetStabChainMutable(nasi,t);
+  SetStabChainImmutable(nasi,Immutable(t));
 
   qt:=RightTransversal(qg,qs);
   #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
