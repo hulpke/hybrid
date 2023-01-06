@@ -420,7 +420,6 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
         # shall we store one longer?
         if i+j+1<lf and j<4 and Length(autcache)<10000 then
           aut:=autcache[pos][2]*autcache[PositionSorted(autcache,[f{[i+j]}])][2];
-          #SpeedupDataPcHom(aut);
           AddSet(autcache,Immutable([f{[i..i+j]},aut]));
           inliste(f{[i..i+j]});
           j:=j+1;
@@ -637,7 +636,13 @@ local rules,tzrec,r,i,p,has,x,y,tail,popo,tzrules,offset,bd,starters,
   for p in [1,3..Length(list)-1] do
     Append(x,LetterRepAssocWord(list[p]));
     if not IsOne(list[p+1]) then
-      addbot(Length(x),list[p+1]);
+      q:=PositionProperty(bot,y->y[1]=Length(x));
+      if q=fail then
+        addbot(Length(x),list[p+1]);
+      else
+        # cannot use addbot, since myultiply from right
+        bot[q]:=Immutable([bot[q][1],bot[q][2]*list[p+1]]);
+      fi;
     fi;
   od;
 
@@ -850,13 +855,18 @@ function(b,a)
 local fam,c,h;
   fam:=FamilyObj(a);
 
-  if a![3]<>false then
-    return HybridNormalFormProduct(fam,
-      [a![3]![1],a![3]![2],b![1],b![2],a![1],a![2]]);
+  if IsOne(b![1]) then
+    c:=b*HybridGroupElement(fam,a![1],fam!.normalone);
+    return HybridGroupElement(fam,fam!.factorone,c![2]^a![2]);
   else
-    h:=HybridTopInverse(a);
-    return HybridNormalFormProduct(fam,[fam!.factorone,Inverse(a![2]),
-      h![1],h![2],b![1],b![2],a![1],a![2]]);
+    if a![3]<>false then
+      return HybridNormalFormProduct(fam,
+        [a![3]![1],a![3]![2],b![1],b![2],a![1],a![2]]);
+    else
+      h:=HybridTopInverse(a);
+      return HybridNormalFormProduct(fam,[fam!.factorone,Inverse(a![2]),
+        h![1],h![2],b![1],b![2],a![1],a![2]]);
+    fi;
   fi;
 
 #  if IsOne(b![1]) then
