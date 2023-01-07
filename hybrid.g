@@ -3846,6 +3846,18 @@ local a;
   fi;
 end);
 
+#############################################################################
+##
+#M  Pcgs( <G> )
+##
+InstallMethod( Pcgs, true, [ IsHybridGroup ], 0,
+function(G)
+local ff,p;
+  ff:=FittingFreeLiftSetup(G);
+  p:=ff.pcgs;
+  if Product(RelativeOrders(p))<>Size(G) then return fail;fi;
+  return p;
+end);
 
 #############################################################################
 ##
