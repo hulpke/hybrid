@@ -1958,7 +1958,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
 
   # short words
   if Size(sub)<sz and Length(sel)>0 and dowords then
-    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},100);
+    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},
+      Minimum(100,RootInt(Size(Source(iso))),2));
     for i in j[2] do
       addker(i);
     od;
@@ -3647,7 +3648,7 @@ InstallMethod(IsSolvableGroup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(G)
 local hb;
-  hb:=HybridBits(G)
+  hb:=HybridBits(G);
   return IsSolvableGroup(hb.factor);
 end);
 
