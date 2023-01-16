@@ -189,6 +189,13 @@ InstallMethod(One,"hybrid group elements",
 #  c:=HybridGroupElement(fam,fam!.factorone,Inverse(a![2]))*(c*HybridGroupElement(fam,fam!.factorone,a![2]*(d![2]^a![2])));
 #  return c;
 
+HybridNormalWord:=function(fam,w)
+  w:=ImagesRepresentative(fam!.monhom,w);
+  w:=ReducedForm(ReducedConfluentRewritingSystem(Range(fam!.monhom)),
+    UnderlyingElement(w));
+  w:=ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),w);
+  return PreImagesRepresentative(fam!.monhom,w);
+end;
 
 BindGlobal("HybridTopInverse",function(elm)
 local fam,inv,junk,let,i,j,ran,invs,prd,inliste,pos,wfam;
@@ -1850,7 +1857,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     isorec.apply:=function(x)
       x:=ReducedForm(isorec.kb,UnderlyingElement(
         ImagesRepresentative(isorec.monhom,
-	  ImagesRepresentative(isorec.fphom,x))));
+          ImagesRepresentative(isorec.fphom,x))));
       x:=ElementOfFpMonoid(isorec.fam,x);
       x:=PreImagesRepresentative(isorec.monhom,x);
       return x;
@@ -1866,7 +1873,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
       if Length(arg)>1 then
         img:=arg[2];
       else
-	img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
+        img:=MappedWord(w,gfg,GeneratorsOfGroup(G));
       fi;
   #Print(w," yields ",img,"\n");
       if not img![2] in sub then
@@ -1931,7 +1938,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     for i in RelatorsOfFpGroup(fp) do
       if Size(sub)<sz then
         addker(MappedWord(i,FreeGeneratorsOfFpGroup(fp),map),
-	       MappedWord(i,FreeGeneratorsOfFpGroup(fp),prelms));
+               MappedWord(i,FreeGeneratorsOfFpGroup(fp),prelms));
       fi;
     od;
 
@@ -1975,7 +1982,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     i:=1;
     while i<=Length(ker) and Size(sub)<sz do
       for j in gfg do
-	addker(kerw[i]^j);
+        addker(kerw[i]^j);
       od;
       i:=i+1;
     od;
@@ -2000,7 +2007,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
           ker:=sub,
-	  apply:=isorec.apply,
+          apply:=isorec.apply,
           factoriso:=iso);
   if dowords then
     j.freegens:=gfg;
@@ -2078,9 +2085,9 @@ local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens;
   r:=rec(parentffs:=ffs,
             rest:=rest,
             ker:=ker,
-	    pcgs:=k,
-	    serdepths:=List(ffs.depths,y->First([1..Length(r)],x->r[x]>=y))
-	    );
+            pcgs:=k,
+            serdepths:=List(ffs.depths,y->First([1..Length(r)],x->r[x]>=y))
+            );
 
   return r;
 
@@ -2433,7 +2440,7 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
 
     topho:=[hb.factoriso,GeneratorsOfGroup(Range(hb.factoriso)),hb.freps,
             List(hb.wordsfreps,x->MappedWord(x,hb.freegens,mgi[2])),
-	    hb.apply];
+            hb.apply];
 
     hom!.topho:=topho;
     hom!.underlyingpchom:=pchom;
@@ -2452,6 +2459,7 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     ElementOfFpGroup(FamilyObj(One(Range(fam!.fphom))),elm![1]));
   #r:=ImagesRepresentative(topho[1],r);
   r:=topho[5](r);
+  r:=HybridNormalWord(fam,r); # normal word for element
   if not IsBound(hom!.wordcache) then
     hom!.wordcache:=[];
     hom!.lenlim:=First([10,9..1],x->Length(topho[2])^x<5*10^4);
@@ -2459,15 +2467,15 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
   if not IsBound(hom!.previouses) then hom!.previouses:=[]; fi;
 
   prevs:=hom!.previouses;
-  i:=PositionProperty(prevs,x->x[1]=r);
+  i:=PositionProperty(prevs,x->x[1]=UnderlyingElement(r));
   if i=fail then
     #rw:=MappedWord(Inverse(r),topho[2],topho[3]);
     split:=LetterRepAssocWord(UnderlyingElement(Inverse(r)));
     split:=List(
       List([1..QuoInt(Length(split)+hom!.lenlim-1,hom!.lenlim)],
-	x->Intersection([1..Length(split)],
-	  [(x-1)*hom!.lenlim+1..x*hom!.lenlim])),
-	  x->split{x});
+        x->Intersection([1..Length(split)],
+          [(x-1)*hom!.lenlim+1..x*hom!.lenlim])),
+          x->split{x});
     rw:=List(split,x->HybhomCachedProduct(hom,x));
     rw:=Product(rw,One(Source(hom)));
 
@@ -2476,7 +2484,7 @@ local src,mgi,fam,map,toppers,topi,ker,hb,r,a,topho,topdec,pchom,pre,sub,
     else
       ri:=MappedWord(r,topho[2],topho[4]);
     fi;
-    Add(prevs,[r,rw,ri]);
+    Add(prevs,[UnderlyingElement(r),rw,ri]);
     if Length(prevs)>20 then
       for i in [1..20] do
         prevs[i]:=prevs[i+1];
@@ -3689,11 +3697,8 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
         GeneratorsOfGroup(fam!.factgrp)),false,
       function(elm)
       local w;
-        w:=ImagesRepresentative(fam!.fphom,elm);
-        w:=ImagesRepresentative(fam!.monhom,w);
-        w:=ReducedForm(kb,UnderlyingElement(w));
-        w:=ElementOfFpMonoid(mfam,w);
-        w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
+        w:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,elm));
+        w:=UnderlyingElement(w);
         return HybridGroupElement(fam,w,fam!.normalone);
       end);
 
@@ -3735,11 +3740,8 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
       # word with a 1-tail
       prerep:=function(elm)
       local w;
-        w:=ImagesRepresentative(fam!.fphom,elm);
-        w:=ImagesRepresentative(fam!.monhom,w);
-        w:=ReducedForm(kb,UnderlyingElement(w));
-        w:=ElementOfFpMonoid(mfam,w);
-        w:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,w));
+        w:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,elm));
+        w:=UnderlyingElement(w);
         return HybridGroupElement(fam,w,fam!.normalone);
       end;
     else
@@ -3909,11 +3911,8 @@ local fam,ffs,r;
     fam:=FamilyObj(One(G));
     r:=Random(Image(ffs.factorhom));
     #r:=PreImagesRepresentative(ffs.factorhom,Random(Image(ffs.factorhom)));
-    r:=ImagesRepresentative(fam!.monhom,ImagesRepresentative(fam!.fphom,r));
-    r:=ReducedForm(ReducedConfluentRewritingSystem(Range(fam!.monhom)),
-      UnderlyingElement(r));
-    r:=ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),r);
-    r:=UnderlyingElement(PreImagesRepresentative(fam!.monhom,r));
+    r:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,r));
+    r:=UnderlyingElement(r);
     r:=HybridGroupElement(fam,r,fam!.normalone);
   else
     r:=One(G);
@@ -4031,7 +4030,7 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
             qtr:=qtr,
             kt:=kt,
             coe:=[Length(qt),Length(kt)]
-	    ));
+            ));
   Add(cache,[Size(S),S,t]);
   return t;
 end);
