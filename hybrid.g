@@ -3624,11 +3624,22 @@ InstallMethod(SmallGeneratingSet,"hybrid",
 function(sub)
 local fam,a,b,l,p,hb,sr,e,i,img;
   fam:=FamilyObj(One(sub));
+  hb:=HybridBits(sub);
+  # select small subset of factor generators
   a:=Filtered(GeneratorsOfGroup(sub),x->not IsOne(x![1]));
+  b:=List(a,x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
+    GeneratorsOfGroup(fam!.factgrp)));
+  l:=[1..Length(b)];
+  e:=fam!.factgrp;
+  for i in [1..Length(b)] do
+    if Size(SubgroupNC(e,b{Difference(l,[i])}))=Size(e) then
+      l:=Difference(l,[i]);
+    fi;
+  od;
+  a:=a{l};
   b:=ShallowCopy(a);
   l:=Length(a);
   p:=l;
-  hb:=HybridBits(sub);
   sr:=TrivialSubgroup(hb.ker);
   while Size(sr)<Size(hb.ker) do
     e:=First(CanonicalPcgs(hb.kerpcgs),x->not x in sr);
