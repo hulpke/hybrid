@@ -3743,6 +3743,7 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
         w:=UnderlyingElement(w);
         return HybridGroupElement(fam,w,fam!.normalone);
       end);
+    nat!.isHybridFFMapping:=true;
 
     SetMappingGeneratorsImages(nat,[GeneratorsOfGroup(g),geni]);
 
@@ -3787,7 +3788,7 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
         return HybridGroupElement(fam,w,fam!.normalone);
       end;
     else
-      premap:=GroupHomomorphismByImagesNC(b.factor,g,geni,GeneratorsOfGroup(g));
+      premap:=GroupGeneralMappingByImagesNC(b.factor,g,geni,GeneratorsOfGroup(g));
       prerep:=elm->ImagesRepresentative(premap,elm);
     fi;
 
@@ -3795,6 +3796,7 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
       x->MappedWord(x![1],GeneratorsOfGroup(fam!.presentation.group),
         GeneratorsOfGroup(fam!.factgrp)),false,prerep);
     SetMappingGeneratorsImages(fmap,[GeneratorsOfGroup(g),geni]);
+    fmap!.isHybridFFMapping:=true;
 
     frad:=RadicalGroup(b.factor);
     if Size(frad)=1 then
@@ -3881,12 +3883,20 @@ end);
 InstallMethod(RestrictedMapping,"hybrid group factorhom",
   CollFamSourceEqFamElms,[IsGroupGeneralMapping,IsHybridGroup],SUM_FLAGS,
 function(hom,sub)
-local ff,p;
+local ff,p,eqtest;
   p:=Parent(sub);
-  if not IsIdenticalObj(p,Source(hom)) then TryNextMethod();fi;
-  ff:=FittingFreeSubgroupSetup(p,sub);
-  if not IsIdenticalObj(ff.parentffs.factorhom,hom) then TryNextMethod();fi;
-  return ff.rest;
+  if IsBound(hom!.isHybridFFMapping) and hom!.isHybridFFMapping then
+    eqtest:=\=;
+  else
+    eqtest:=IsIdenticalObj;
+  fi;
+  if eqtest(p,Source(hom)) then
+    ff:=FittingFreeSubgroupSetup(p,sub);
+    if eqtest(ff.parentffs.factorhom,hom) then
+      return ff.rest;
+    fi;
+  fi;
+  TryNextMethod();
 end);
 
 InstallMethod( ExponentsOfPcElement, "hybrid", IsCollsElms,
