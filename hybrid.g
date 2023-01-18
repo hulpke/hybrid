@@ -1803,7 +1803,7 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of,sz,isorec,prelms;
+  xker,xkerw,addker,dowords,ffam,of,sz,isorec,prelms,genimgs,base,strong;
 
   if HasSize(G) then
     sz:=Size(G);
@@ -1822,12 +1822,27 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   #gfg:=StraightLineProgGens(gfg);
 
   # first get the factor
-  top:=List(GeneratorsOfGroup(G),x->x![1]);
-  sel:=Filtered([1..Length(top)],x->not IsOne(top[x]));
-  top:=List(top{sel},x->MappedWord(x,
+  genimgs:=List(GeneratorsOfGroup(G),x->x![1]);
+  genimgs:=List(genimgs,x->MappedWord(x,
     GeneratorsOfGroup(fam!.presentation.group),
     GeneratorsOfGroup(fam!.factgrp)));
+  sel:=Filtered([1..Length(genimgs)],x->not IsOne(genimgs[x]));
+  top:=genimgs{sel};
   factor:=Group(top,One(fam!.factgrp));
+
+  # Find nice base (short orbits first)
+  if IsPermGroup(factor) and not IsTrivial(factor) then
+    base:=ShallowCopy(Orbits(factor,MovedPoints(factor)));
+    SortBy(base,Length);
+    strong:=StabChain(factor,rec(base:=Concatenation(base)));
+    base:=BaseStabChain(strong);
+    strong:=StrongGeneratorsStabChain(strong);
+  else
+    base:=fail;
+    strong:=fail;
+  fi;
+
+
   if sz=fail then sz:=Size(fam!.normal);
   else sz:=sz/Size(factor);fi;
 
@@ -2013,6 +2028,9 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
           ker:=sub,
+          genimgs:=genimgs,
+          base:=base,
+          strong:=strong,
           apply:=isorec.apply,
           factoriso:=iso);
   if dowords then
@@ -2037,23 +2055,42 @@ end;
 InstallMethod(DoFFSS,"hybrid",IsIdenticalObj,
   [IsHybridGroup and IsFinite,IsHybridGroup],0,
 function(G,U)
-local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens;
+local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens,hb;
 
   ffs:=FittingFreeLiftSetup(G);
+  hb:=HybridBits(U);
+  # if it is the whole group, do not handle
   if Size(G)<>Size(FamilyObj(One(G))!.wholeGroup) then TryNextMethod();fi;
 
   pcisom:=ffs.pcisom;
 
   #rest:=RestrictedMapping(ffs.factorhom,U);
+  xx:=List(GeneratorsOfGroup(U),x->ImagesRepresentative(ffs.factorhom,x));
   RUN_IN_GGMBI:=true; # hack to skip Nice treatment
   rest:=GroupHomomorphismByImagesNC(U,Range(ffs.factorhom),GeneratorsOfGroup(U),
-    List(GeneratorsOfGroup(U),x->ImagesRepresentative(ffs.factorhom,x)));
+    xx);
+  # and temporary one for inverses
+  if hb.base<>fail then
+    xx:=GroupGeneralMappingByImagesNC(Group(xx),U,xx,GeneratorsOfGroup(U));
+  fi;
   RUN_IN_GGMBI:=false;
 
   Assert(1,rest<>fail);
 
   if HasRecogDecompinfoHomomorphism(ffs.factorhom) then
     SetRecogDecompinfoHomomorphism(rest,RecogDecompinfoHomomorphism(ffs.factorhom));
+  fi;
+
+  # build inverse map with good strong generators
+  if hb.base<>fail then
+    RUN_IN_GGMBI:=true;
+    k:=GroupGeneralMappingByImagesNC(hb.factor,U,hb.strong,
+      List(hb.strong,x->ImagesRepresentative(xx,x)));
+    RUN_IN_GGMBI:=false;
+    xx:=StabChainMutable(k,rec(base:=hb.base));
+    SetStabChainMutable(k,xx);
+    SetStabChainImmutable(k,Immutable(xx));
+    SetRestrictedInverseGeneralMapping(rest,k);
   fi;
 
   # in radical?
@@ -2071,9 +2108,8 @@ local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens;
     k:=ffs.pcgs;
   else
 
-    r:=HybridBits(U);
-    kpc:=r.ker;
-    k:=List(r.kerpcgs,x->PreImagesRepresentative(pcisom,x));
+    kpc:=hb.ker;
+    k:=List(hb.kerpcgs,x->PreImagesRepresentative(pcisom,x));
     k:=InducedPcgsByPcSequenceNC(ffs.pcgs,k);
     ker:=SubgroupNC(G,k);
     SetSize(ker,Size(kpc));
@@ -3974,8 +4010,8 @@ DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
 InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
   [IsHybridGroup,IsHybridGroup],0,
 function(G,S)
-local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi,
-  rs,i,j,b,p,keri,khom;
+local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,
+  rs,i,j,b,p,keri,khom,hbs;
 
   # cache transversals
   if false and IsBound(G!.storedTransversals) then
@@ -4003,8 +4039,11 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi,
     nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
   fi;
 
-  a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
-  qs:=SubgroupNC(Range(nat),a);
+  #a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
+  #qs:=SubgroupNC(Range(nat),a);
+  hbs:=HybridBits(S);
+  a:=hbs.genimgs;
+  qs:=hbs.factor;
 
   qt:=RightTransversal(qg,qs);
   #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
@@ -4012,13 +4051,6 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi,
   pci:=fg.parentffs.pcisom;
   keri:=Image(pci,fg.ker);
   kt:=RightTransversal(keri,Image(pci,fs.ker));
-
-  # Make qs with nice base (short orbits first)
-  if IsPermGroup(qs) then
-    orb:=ShallowCopy(Orbits(qs,MovedPoints(qs)));
-    SortBy(orb,Length);
-    StabChain(qs,rec(base:=Concatenation(orb)));
-  fi;
 
   nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
 
@@ -4054,15 +4086,7 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi,
     rs:=SubgroupNC(G,a);
     HybridBits(rs);
     khom:=GroupHomomorphismByImagesNC(rs,Group(lg),a,lg);
-    nasi:=fail;
   else
-    # reconstruct inverse with good generators
-    lg:=StrongGeneratorsStabChain(StabChain(qs));
-    nasi:=GroupGeneralMappingByImagesNC(qs,S,lg,
-      List(lg,x->PreImagesRepresentative(nas,x)));
-    t:=StabChainMutable(nasi,rec(base:=BaseStabChain(StabChain(qs))));
-    SetStabChainMutable(nasi,t);
-    SetStabChainImmutable(nasi,Immutable(t));
     khom:=fail;
   fi;
 
@@ -4075,7 +4099,6 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi,
             nat:=nat,
             nag:=nag,
             nas:=nas,
-            nasi:=nasi,
             qt:=qt,
             qtr:=qtr,
             kt:=kt,
@@ -4121,8 +4144,7 @@ local a,c;
     a:=1^ImagesRepresentative(t!.khom,elm);
   else
 
-  #a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
-    a:=ImagesRepresentative(t!.nasi,a);
+    a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
 
     elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor,
     # coset remains the same
