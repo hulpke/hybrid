@@ -1852,7 +1852,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     iso:=IsomorphismFpGroup(factor);
     isorec:=rec(fphom:=iso,
        apply:=function(x)
-         return HybridNormalWord(fam,ImagesRepresentative(iso,x));
+         return ImagesRepresentative(iso,x);
         end);
        #apply:=x->ImagesRepresentative(iso,x));
   else
@@ -3974,10 +3974,11 @@ DeclareRepresentation("IsRightTransversalHybridGroupRep",IsRightTransversalRep,
 InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
   [IsHybridGroup,IsHybridGroup],0,
 function(G,S)
-local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
+local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi,
+  rs,i,j,b,p,keri,khom;
 
   # cache transversals
-  if IsBound(G!.storedTransversals) then
+  if false and IsBound(G!.storedTransversals) then
     cache:=G!.storedTransversals;
     for a in cache do
       if a[1]=Size(S) and ForAll(GeneratorsOfGroup(S),x->x in a[2]) then
@@ -3993,12 +3994,25 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
   fg:=FittingFreeSubgroupSetup(fam!.wholeGroup,G);
   fs:=FittingFreeSubgroupSetup(fam!.wholeGroup,S);
   nat:=fg.parentffs.factorhom;
-  a:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(nat,x));
-  qg:=SubgroupNC(Range(nat),a);
-  nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
+  if Size(G)=Size(fam!.wholeGroup) then
+    qg:=Image(nat,G);
+    nag:=nat;
+  else
+    a:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(nat,x));
+    qg:=SubgroupNC(Range(nat),a);
+    nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
+  fi;
 
   a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
   qs:=SubgroupNC(Range(nat),a);
+
+  qt:=RightTransversal(qg,qs);
+  #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
+  qtr:=[];
+  pci:=fg.parentffs.pcisom;
+  keri:=Image(pci,fg.ker);
+  kt:=RightTransversal(keri,Image(pci,fs.ker));
+
   # Make qs with nice base (short orbits first)
   if IsPermGroup(qs) then
     orb:=ShallowCopy(Orbits(qs,MovedPoints(qs)));
@@ -4008,19 +4022,49 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
 
   nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
 
-  # now reconstruct inverse with good generators
-  lg:=StrongGeneratorsStabChain(StabChain(qs));
-  nasi:=GroupGeneralMappingByImagesNC(qs,S,lg,
-    List(lg,x->PreImagesRepresentative(nas,x)));
-  t:=StabChainMutable(nasi,rec(base:=BaseStabChain(StabChain(qs))));
-  SetStabChainMutable(nasi,t);
-  SetStabChainImmutable(nasi,Immutable(t));
-
-  qt:=RightTransversal(qg,qs);
-  #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
-  qtr:=[];
-  pci:=fg.parentffs.pcisom;
-  kt:=RightTransversal(Image(pci,fg.ker),Image(pci,fs.ker));
+  if Length(kt)<1000 then
+    # build action of <R,S> on cosets of S by using representatives in R
+    t:=List(kt,x->PreImagesRepresentative(pci,x));
+    # pick generators of S and R
+    a:=Filtered(SmallGeneratingSet(S),x->not IsOne(x![1]));
+    # permutation action of a on t
+    lg:=[];
+    for i in a do
+      p:=[];
+      for j in [1..Length(t)] do
+        # calculate t[j]*i. Will lie in same R coset as i. So left multiply
+        # by i^-1 to get element in R while maintaining the S-coset
+        b:=t[j]^i;
+        Assert(1,IsOne(b![1]));
+        b:=PositionCanonical(kt,b![2]);
+        Add(p,b);
+      od;
+      Add(lg,PermList(p));
+    od;
+    for i in GeneratorsOfGroup(fg.ker) do
+      Add(a,i);
+      p:=[];
+      for j in [1..Length(t)] do
+        b:=t[j]*i;
+        b:=PositionCanonical(kt,b![2]);
+        Add(p,b);
+      od;
+      Add(lg,PermList(p));
+    od;
+    rs:=SubgroupNC(G,a);
+    HybridBits(rs);
+    khom:=GroupHomomorphismByImagesNC(rs,Group(lg),a,lg);
+    nasi:=fail;
+  else
+    # reconstruct inverse with good generators
+    lg:=StrongGeneratorsStabChain(StabChain(qs));
+    nasi:=GroupGeneralMappingByImagesNC(qs,S,lg,
+      List(lg,x->PreImagesRepresentative(nas,x)));
+    t:=StabChainMutable(nasi,rec(base:=BaseStabChain(StabChain(qs))));
+    SetStabChainMutable(nasi,t);
+    SetStabChainImmutable(nasi,Immutable(t));
+    khom:=fail;
+  fi;
 
   t := Objectify( NewType( FamilyObj( G ),
                                IsList and IsDuplicateFreeList
@@ -4035,6 +4079,7 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,nasi;
             qt:=qt,
             qtr:=qtr,
             kt:=kt,
+            khom:=khom,
             coe:=[Length(qt),Length(kt)]
             ));
   Add(cache,[Size(S),S,t]);
@@ -4072,14 +4117,20 @@ local a,c;
     c:=1;
   fi;
 
-  #a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
-  a:=ImagesRepresentative(t!.nasi,a);
+  if t!.khom<>fail then
+    a:=1^ImagesRepresentative(t!.khom,elm);
+  else
 
-  elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor,
-  # coset remains the same
-  if not IsOne(elm![1]) then return fail;fi;
-  a:=PositionCanonical(t!.kt,elm![2]);
-  if a=fail then return fail;fi;
+  #a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
+    a:=ImagesRepresentative(t!.nasi,a);
+
+    elm:=LeftQuotient(a,elm); # mult. by subgroup element to kill in factor,
+    # coset remains the same
+    if not IsOne(elm![1]) then return fail;fi;
+    a:=PositionCanonical(t!.kt,elm![2]);
+    if a=fail then return fail;fi;
+
+  fi;
   if cano=false and elm<>t!.kt[a] then return fail;fi;
   return (c-1)*Length(t!.kt)+a;
 end);
