@@ -2051,6 +2051,26 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   return j;
 end;
 
+BindGlobal("HyperPreimageMap",function(map,hb)
+local mgi,revmap,newrev,a;
+  # build inverse map with good strong generators
+  if hb.base<>fail then
+    mgi:=MappingGeneratorsImages(map);
+    RUN_IN_GGMBI:=true;
+    revmap:=GroupGeneralMappingByImagesNC(Image(map),Source(map),mgi[2],mgi[1]);
+    RUN_IN_GGMBI:=false;
+    a:=List(hb.strong,x->ImagesRepresentative(revmap,x));
+    RUN_IN_GGMBI:=true;
+    newrev:=GroupGeneralMappingByImagesNC(Image(map),Source(map),
+      hb.strong, a);
+    RUN_IN_GGMBI:=false;
+    a:=StabChainMutable(newrev,rec(base:=hb.base));
+    SetStabChainMutable(newrev,a);
+    SetStabChainImmutable(newrev,Immutable(a));
+    SetRestrictedInverseGeneralMapping(map,newrev);
+  fi;
+end);
+
 
 InstallMethod(DoFFSS,"hybrid",IsIdenticalObj,
   [IsHybridGroup and IsFinite,IsHybridGroup],0,
@@ -2067,8 +2087,8 @@ local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens,hb;
   #rest:=RestrictedMapping(ffs.factorhom,U);
   xx:=List(GeneratorsOfGroup(U),x->ImagesRepresentative(ffs.factorhom,x));
   RUN_IN_GGMBI:=true; # hack to skip Nice treatment
-  rest:=GroupHomomorphismByImagesNC(U,Range(ffs.factorhom),GeneratorsOfGroup(U),
-    xx);
+  rest:=GroupHomomorphismByImagesNC(U,hb.factor,GeneratorsOfGroup(U), xx);
+  SetIsSurjective(rest,true);
   # and temporary one for inverses
   if hb.base<>fail then
     xx:=GroupGeneralMappingByImagesNC(Group(xx),U,xx,GeneratorsOfGroup(U));
@@ -2082,16 +2102,7 @@ local ffs,pcisom,rest,it,kpc,k,x,ker,r,pool,i,xx,inv,pregens,hb;
   fi;
 
   # build inverse map with good strong generators
-  if hb.base<>fail then
-    RUN_IN_GGMBI:=true;
-    k:=GroupGeneralMappingByImagesNC(hb.factor,U,hb.strong,
-      List(hb.strong,x->ImagesRepresentative(xx,x)));
-    RUN_IN_GGMBI:=false;
-    xx:=StabChainMutable(k,rec(base:=hb.base));
-    SetStabChainMutable(k,xx);
-    SetStabChainImmutable(k,Immutable(xx));
-    SetRestrictedInverseGeneralMapping(rest,k);
-  fi;
+  HyperPreimageMap(rest,hb);
 
   # in radical?
   if ForAll(MappingGeneratorsImages(rest)[2],IsOne) then
@@ -4021,7 +4032,7 @@ InstallMethod(RightTransversal,"hybrid groups",IsIdenticalObj,
   [IsHybridGroup,IsHybridGroup],0,
 function(G,S)
 local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,
-  rs,i,j,b,p,keri,khom,hbs;
+  rs,i,j,b,p,keri,khom,hbs,hbg;
 
   # cache transversals
   if false and IsBound(G!.storedTransversals) then
@@ -4040,13 +4051,14 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,
   fg:=FittingFreeSubgroupSetup(fam!.wholeGroup,G);
   fs:=FittingFreeSubgroupSetup(fam!.wholeGroup,S);
   nat:=fg.parentffs.factorhom;
+  hbg:=HybridBits(G);
   if Size(G)=Size(fam!.wholeGroup) then
-    qg:=Image(nat,G);
+    qg:=hbg.factor;
     nag:=nat;
   else
-    a:=List(GeneratorsOfGroup(G),x->ImagesRepresentative(nat,x));
-    qg:=SubgroupNC(Range(nat),a);
-    nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),a);
+    qg:=hbg.factor;
+    nag:=GroupHomomorphismByImagesNC(G,qg,GeneratorsOfGroup(G),hbg.genimgs);
+    HyperPreimageMap(nag,hbg);
   fi;
 
   #a:=List(GeneratorsOfGroup(S),x->ImagesRepresentative(nat,x));
