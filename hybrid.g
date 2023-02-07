@@ -4253,11 +4253,16 @@ end);
 #F  IdentificationHybridGroup(<D>,<el>) . . . . .  class invariants for el in G
 ##
 ##
+CheapIdentificationHybridGroup := function(D,el)
+local pa;
+  pa:=[Order(el)];
+  return pa;
+end;
+
 IdentificationHybridGroup := function(D,el)
 local hom,pa,sel,eq,t;
-
   hom:=FittingFreeLiftSetup(D.group).factorhom;
-  pa:=[Order(el)];
+  pa:=CheapIdentificationHybridGroup(D,el);
   sel:=Filtered([1..Length(D.patterns)],x->D.patterns[x]{[1..Length(pa)]}=pa);
   eq:=fail;
   while Length(sel)>1 do
@@ -4291,10 +4296,12 @@ end;
 ##
 InstallMethod(DxPreparation,"hybrid",true,[IsHybridGroup,IsRecord],0,
 function(G,D)
-local i,j,enum,cl,pats,pa,sel,np,hom,q;
+local i,j,enum,cl,pats,pa,sel,np,hom,q,fs,f;
   D.identification:=IdentificationHybridGroup;
+  D.cheapIdentification:=CheapIdentificationHybridGroup;
   D.rationalidentification:=IdentificationGenericGroup;
   D.ClassMatrixColumn:=StandardClassMatrixColumn;
+  D.ClassMatrixColumn:=TFClassMatrixColumn;
 
   hom:=FittingFreeLiftSetup(D.group).factorhom;
   q:=Image(hom,D.group);
@@ -4355,10 +4362,26 @@ local i,j,enum,cl,pats,pa,sel,np,hom,q;
   D.patterns:=pats;
 
   D.ids:=[];
+  D.chids:=[];
   D.rids:=[];
+  D.nocanonize:=[];
+  D.faclaimg:=[];
+  D.canreps:=[];
   for i in D.classrange do
     D.ids[i]:=D.identification(D,D.classreps[i]);
+    D.chids[i]:=D.cheapIdentification(D,D.classreps[i]);
     D.rids[i]:=D.rationalidentification(D,D.classreps[i]);
+    D.canreps[i]:=
+      TFCanonicalClassRepresentative(D.group,[D.classreps[i]])[1][2];
+  od;
+  fs:=List(D.classes,x->D.cheapIdentification(D,Representative(x)));
+  for i in D.classrange do
+    f:=Filtered(D.classrange,x->fs[x]=fs[i]);
+    if Length(f)=1 then
+      Add(D.nocanonize,fs[i]);
+    else
+      Add(D.faclaimg,[fs[i],f]); # store which classes images could be
+    fi;
   od;
 
   if IsDxLargeGroup(G) then
