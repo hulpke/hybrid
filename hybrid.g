@@ -3735,7 +3735,7 @@ InstallMethod(FittingFreeLiftSetup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(g)
 local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
-  fc,fcr,nc,src;
+  fc,fcr,nc,src,i,j,au,w,p,u;
   fam:=FamilyObj(One(g));
   b:=HybridBits(g);
   # can we used induced form?
@@ -3758,10 +3758,12 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
 
     SetMappingGeneratorsImages(nat,[GeneratorsOfGroup(g),geni]);
 
+    # find an invariant series, compatible with the pcgs depths
     oc:=CanonicalPcgs(b.kerpcgs);
     pc:=List(oc,x->HybridGroupElement(fam,fam!.factorone,x));
     a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
       oc,List(pc,y->(y^x)![2])));
+
     ser:=InvariantElementaryAbelianSeries(b.ker,a);
     a:=List(ser,InducedPcgsWrtFamilyPcgs);
     a:=List([2..Length(a)],x->a[x-1] mod a[x]);
@@ -3823,18 +3825,63 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
     if Size(b.ker)>1 then
       a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
       oc,List(pc,y->(y^x)![2])));
-      ser:=InvariantElementaryAbelianSeries(b.ker,a);
-      a:=List(ser,CanonicalPcgsWrtFamilyPcgs);
-      a:=List([2..Length(a)],x->a[x-1] mod a[x]);
-      if Concatenation(a)<>oc then
-        Error("not natural depths");
-      fi;
+
+      u:=TrivialSubgroup(b.ker);
+      ser:=[u];
+      i:=1;
+      while i<=Length(oc) do
+        if not oc[i] in u then
+          u:=ClosureSubgroup(u,oc[i]);
+          dep:=[oc[i]];
+          for j in dep do
+            for au in a do
+              w:=ImagesRepresentative(au,j);
+              if not w in u then
+                u:=ClosureGroup(u,w);
+                Add(dep,w);
+              fi;
+            od;
+          od;
+          w:=ser[Length(ser)];
+          while not HasAbelianFactorGroup(u,w) do
+            i:=Maximum(0,i-1);
+            u:=ClosureGroup(w,DerivedSubgroup(u));
+          od;
+          if not HasElementaryAbelianFactorGroup(u,w) then
+            i:=Maximum(0,i-1);
+            # make one prime
+            p:=Set(Factors(Size(u)/Size(w)));
+            if Length(p)>1 then
+              u:=ClosureGroup(w,SylowSubgroup(u,p[Length(p)]));
+            fi;
+            p:=p[Length(p)];
+            # and elementary (my dear Watson)
+            if not HasElementaryAbelianFactorGroup(u,w) then
+              j:=NaturalHomomorphismByNormalSubgroupNC(u,w);
+              u:=Omega(Image(j,u),p,1);
+              u:=PreImage(j,u);
+            fi;
+          fi;
+          Add(ser,u);
+        fi;
+        i:=i+1;
+      od;
+      ser:=Reversed(ser);
+      a:=List(ser,x->InducedPcgs(oc,x));
+      w:=List([2..Length(a)],x->a[x-1] mod a[x]);
+      dep:=[1];
+      a:=[];
+      for i in [1..Length(w)] do
+        Append(a,w[i]);
+        Add(dep,Length(a)+1);
+      od;
+      oc:=PcgsByPcSequence(FamilyObj(OneOfPcgs(oc)),a);
+      pc:=List(a,x->HybridGroupElement(fam,fam!.factorone,x));
     else
       a:=oc;
+      dep:=List(a,x->DepthOfPcElement(oc,x[1]));
+      Add(dep,Length(a)+1);
     fi;
-
-    dep:=List(a,x->DepthOfPcElement(oc,x[1]));
-    Add(dep,Length(pc)+1);
 
     if Size(frad)>1 then
       # combine with Pcgs on top
