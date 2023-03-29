@@ -937,6 +937,15 @@ local c,fam,l;
   fi;
 end);
 
+InstallMethod(LeftQuotient,"hybrid group elements",IsIdenticalObj,
+  [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
+function(a,b)
+local fam,t;
+  fam:=FamilyObj(a);
+  t:=HybridTopInverse(a);
+  return HybridGroupElement(fam,fam!.factorone,Inverse(a![2]))*(t*b);
+end);
+
 HybridGroupCocycle:=function(arg)
 local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
       it,hom,trysy,prime,mindeg,ei,mgens,mwrd,nn,newfree,mfpi,mmats,sub,
@@ -4507,6 +4516,7 @@ local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
       od;
     fi;
     if depths[Length(depths)]<>n+1 then Error("EEE");fi;
+    Add(depths,Length(pcgs)+1);
 
     pats:=[];
     for i in [1..Length(depths)-1] do
@@ -4531,8 +4541,9 @@ local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
     g!.automSpeedupData:=r;
   fi;
 
+  # set mat to lowest level change
   n:=Length(r.pcgs);
-  i:=r.depths[Length(r.depths)];
+  i:=r.depths[Length(r.depths)-1];
   mat:=List(hom!.sourcePcgsImages{[i..n]},
     x->ExponentsOfPcElement(r.pcgs,x){[i..n]});
   mat:=ImmutableMatrix(r.field,mat*One(r.field));
@@ -4547,15 +4558,17 @@ InstallMethod( ImagesRepresentative,
           and HasSpeedupDataPcHom,
           IsMultiplicativeElementWithInverse and IsNBitsPcWordRep],100,
 function(hom,elm)
-local r,rg,depths,pcgs,n,v,e,i,a,b;
+local r,rg,depths,pcgs,n,v,e,i,a,b,ld;
   r:=SpeedupDataPcHom(hom);
   rg:=r.groupData;
   depths:=rg.depths;
+  # in next line subtract 1 to use the lowest level matrix
+  ld:=Length(depths);
   pcgs:=rg.pcgs;
   n:=Length(pcgs);
   v:=OneOfPcgs(pcgs);
   e:=ExponentsOfPcElement(pcgs,elm);
-  for i in [1..Length(depths)-1] do
+  for i in [1..ld-1] do
     a:=e{[depths[i]..depths[i+1]-1]};
     b:=rg.pats[i](a)+1; # patterns start at 0
     if not IsBound(r.vals[i][b]) then
@@ -4564,13 +4577,19 @@ local r,rg,depths,pcgs,n,v,e,i,a,b;
     fi;
     v:=v*r.vals[i][b];
   od;
-  b:=depths[Length(depths)];
+  b:=depths[ld];
+  if b>=n then return v;fi;
   a:=e{[b..Length(pcgs)]};
-  a:=ImmutableVector(rg.field,a*One(rg.field))*r.mat;
-  e:=0*e;
+  #a:=ImmutableVector(rg.field,a*One(rg.field))*r.mat;
+  a:=a*One(rg.field);
+  ConvertToVectorRep(a,Size(rg.field));
+  a:=a*r.mat;
+
   b:=b-1;
+  e:=0*e;
   for i in [1..Length(a)] do
     e[b+i]:=Int(a[i]);
   od;
   return v*PcElementByExponentsNC(pcgs,e);
+
 end);
