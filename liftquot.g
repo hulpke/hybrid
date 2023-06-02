@@ -287,6 +287,14 @@ local g1,coh,gp,i,dom,field,fgens,l,d,gens,mc;
       #gp:=FaithfulConstituentMatrixGroup(gp);
       Add(l,gp);
     od;
+    for i in [1..Length(l)] do
+      if not IsPermGroup(l[i]) then
+        d:=IsomorphismPermGroup(l[i]);
+        d:=d*SmallerDegreePermutationRepresentation(Image(d):cheap);
+        d:=List(GeneratorsOfGroup(l[i]),x->ImagesRepresentative(d,x));
+        l[i]:=GroupWithGenerators(d);
+      fi;
+    od;
     d:=DirectProduct(l);
     fgens:=List([1..Length(GeneratorsOfGroup(G))],x->Product([1..Length(l)],y->
       ImagesRepresentative(Embedding(d,y),GeneratorsOfGroup(l[y])[x])));
@@ -314,11 +322,11 @@ local moco;
 end;
 
 LiftQuotient:=function(q,p)
-local G,a,b,irr,newq,i,cov,ker,ext,nat,moco,doit,sma;
+local G,a,b,c,irr,newq,i,cov,ker,ext,nat,moco,doit,sma;
   G:=Source(q);
   a:=Group(List(GeneratorsOfGroup(G),x->ImagesRepresentative(q,x)));
   irr:=ValueOption("irr");
-  if irr=fail then 
+  if irr=fail then
     irr:=IrreducibleModules(a,GF(p),0);
   fi;
   if irr[1]<>GeneratorsOfGroup(a) then Error("gens");fi;
@@ -345,6 +353,11 @@ local G,a,b,irr,newq,i,cov,ker,ext,nat,moco,doit,sma;
 
     if doit then
       cov:=moco.cover;
+      if not IsPermGroup(cov) then
+        sma:=IsomorphismPermGroup(cov);
+        cov:=Group(List(GeneratorsOfGroup(cov),
+          x->ImagesRepresentative(sma,x)));
+      fi;
       if NrMovedPoints(cov)>1000 then
         sma:=SmallerDegreePermutationRepresentation(cov:cheap);
         b:=Size(cov);
@@ -376,7 +389,7 @@ local G,a,b,irr,newq,i,cov,ker,ext,nat,moco,doit,sma;
   if ValueOption("onlydims")=true then return b;fi;
   cov:=[];
   for i in newq do
-    nat:=GroupHomomorphismByImages(i[1],Range(q),GeneratorsOfGroup(i[1]),
+    nat:=GroupHomomorphismByImagesNC(i[1],Range(q),GeneratorsOfGroup(i[1]),
       MappingGeneratorsImages(q)[2]);
     AddNaturalHomomorphismsPool(i[1],
       KernelOfMultiplicativeGeneralMapping(nat),nat);
@@ -387,9 +400,11 @@ local G,a,b,irr,newq,i,cov,ker,ext,nat,moco,doit,sma;
       #TryQuotientsFromFactorSubgroups(nat,i[2],
       #  Minimum(100000,Maximum(1000,10*NrMovedPoints(Range(q)))):skip:=6);
     fi;
-    b:=i[1]/i[2];
-    Add(cov,GroupHomomorphismByImagesNC(G,b,GeneratorsOfGroup(G),
-      GeneratorsOfGroup(b)));
+    #b:=i[1]/i[2];
+    nat:=NaturalHomomorphismByNormalSubgroupNC(i[1],i[2]);
+    sma:=List(GeneratorsOfGroup(i[1]),x->ImagesRepresentative(nat,x));
+    b:=Group(sma);
+    Add(cov,GroupHomomorphismByImagesNC(G,b,GeneratorsOfGroup(G),sma));
   od;
 
   if Length(cov)=0 then
@@ -403,3 +418,41 @@ local G,a,b,irr,newq,i,cov,ker,ext,nat,moco,doit,sma;
   return b*SmallerDegreePermutationRepresentation(Image(b));
 end;
 
+MassageEpimorphismSchurCover:=function(epi)
+local a,p,primes,lifts,b,l,gens;
+  a:=Image(epi);
+  if not IsPermGroup(a) then
+    Error("only works for permgroup images, because I'm lazy");
+  fi;
+  primes:=Filtered(Collected(Factors(Size(a))),x->x[2]>1);
+  primes:=List(primes,x->x[1]);
+  primes:=Filtered(primes,x->not IsCyclic(SylowSubgroup(a,x)));
+
+  # now do for every prime in turn
+  lifts:=[];
+  for p in primes do
+    l:=epi;
+    repeat
+      b:=Image(l);
+      if not IsPermGroup(b) then
+        # force perm
+        l:=l*IsomorphismPermGroup(b);
+        b:=Image(l);
+      fi;
+      gens:=MappingGeneratorsImages(l)[2];
+      l:=LiftQuotient(l,p:irr:=[gens,[TrivialModule(Length(gens),GF(p))]]);
+      Print(p,":",Size(Image(l)),"\n");
+    until Size(Image(l))=Size(b);
+    if Size(Image(l))>Size(a) then Add(lifts,l);fi;
+  od;
+  if Length(lifts)=0 then
+    SetSize(Source(epi),Size(a));
+    return IdentityMapping(a);
+  fi;
+  b:=MappingGeneratorsImages(lifts[1])[2];
+  for p in [2..Length(lifts)] do
+    b:=SubdirectDiagonalPerms(b,MappingGeneratorsImages(lifts[p])[2]);
+  od;
+  l:=Group(b);
+  return GroupHomomorphismByImages(l,a,b,MappingGeneratorsImages(epi)[2]);
+end;
