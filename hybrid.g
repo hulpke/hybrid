@@ -53,13 +53,21 @@ local l;
 end;
 
 TranslatedMonoidRules:=function(monhom)
-local fam,t,r,i,offset,deadend,dag,tt,w,a,j;
+local fam,t,r,i,offset,deadend,dag,tt,w,a,j,pre;
   fam:=FamilyObj(One(Range(monhom)));
-  t:=List(RelationsOfFpMonoid(Range(monhom)),r->List(r,e->
-    UnderlyingElement(PreImagesRepresentative(monhom,
-      ElementOfFpMonoid(fam,e)))));
+  pre:=function(e)
+  local a;
+    a:=PreImagesRepresentative(monhom,ElementOfFpMonoid(fam,e));
+    if IsOne(UnderlyingElement(a)) and not IsOne(e) then
+      if Length(e)<>2 then Error("strange cancellation");fi;
+      return Concatenation(pre(Subword(e,1,1)),pre(Subword(e,2,2)));
+    else
+      return LetterRepAssocWord(UnderlyingElement(a));
+    fi;
+  end;
+  t:=List(RelationsOfFpMonoid(Range(monhom)),r->List(r,pre));
 
-  t:=List(t,x->List(x,LetterRepAssocWord));
+  #t:=List(t,x->List(x,LetterRepAssocWord));
   offset:=1+Length(GeneratorsOfGroup(Source(monhom)));
 
   r:=rec(tzrules:=t,
@@ -191,6 +199,7 @@ InstallMethod(One,"hybrid group elements",
 
 HybridNormalWord:=function(fam,w)
   w:=ImagesRepresentative(fam!.monhom,w);
+if not HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then Error("RedConf"); fi;
   w:=ReducedForm(ReducedConfluentRewritingSystem(Range(fam!.monhom)),
     UnderlyingElement(w));
   w:=ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),w);
@@ -201,7 +210,7 @@ BindGlobal("HybridGroupAutrace",function(fam,m,f)
   local i,mm,autcache,inliste,pos,lf,j,aut;
 
   # process length 1 fast, worth doing since it is frequent
-  if Length(f)=1 then
+  if false and Length(f)=1 then
     if fam!.autmats<>fail then
       mm:=ExponentsOfPcElement(fam!.autspcgs,m)*One(fam!.autgf);
       mm:=ImmutableVector(fam!.autgf,mm);
@@ -637,6 +646,32 @@ local fam,inv,prd;
   return inv;
 
 end);
+
+HPOW:=function(a,e)
+local c,l,i;
+  if e=0 then return One(a);
+  elif e=1 then return a;
+  elif e=-1 then return Inverse(a);
+  elif e<-1 then return HPOW(Inverse(a),-e);
+  fi;
+  # largest 2-power
+  while IsEvenInt(e) do
+    e:=e/2;
+    a:=a^2;
+  od;
+  if e=1 then return a;fi;
+  c:=CoefficientsQadic(e,2);
+  # lowest bit must be 1
+  l:=[a![1],a![2]];
+  for i in [2..Length(c)-1] do
+    a:=a*a;
+    if c[i]=1 then
+      Append(l,[a![1],a![2]]);
+    fi;
+  od;
+  Append(l,[a![1],a![2],a![1],a![2]]);
+  return HybridNormalFormProduct(FamilyObj(a),l);
+end;
 
 InstallMethod(\=,"hybrid group elements",IsIdenticalObj,
   [IsHybridGroupElementDefaultRep,IsHybridGroupElementDefaultRep],0,
@@ -1100,7 +1135,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     while i<Length(e) do
       ep:=e[i]-pos;
       b:=b*pfgens[ep]^(e[i+1] mod relo[ep]);
-      if correct[ep]<>false and e[i+1]*2>relo[ep] then
+      if correct[ep]<>false and (e[i+1]*2>relo[ep] or e[i+1]<0) then
         # we must correct, changing the element as we go on
 
         # forget what was before
@@ -1132,12 +1167,14 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     if not IsOne(elm) then
       SetPower(rws,i,newrd(elm));
     fi;
+    #Add(RELS,pfgens[i]^relo[i]/newrd(elm));
   od;
   for i in [1..Length(npcgs)] do
     elm:=npp[i]^relo[i+Length(fpcgs)];
     if not IsOne(elm) then
       SetPower(rws,i+Length(fpcgs),newrd(elm));
     fi;
+    #Add(RELS,pfgens[i+Length(fpcgs)]^relo[i+Length(fpcgs)]/newrd(elm));
   od;
   # store commutators
   for i in [1..Length(fpcgs)] do
@@ -1146,12 +1183,14 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
       if not IsOne(elm) then
         SetCommutator(rws,j,i,newrd(elm));
       fi;
+      #Add(RELS,Comm(pfgens[j],pfgens[i])/newrd(elm));
     od;
     for j in [1..Length(npcgs)] do
       elm:=Comm(npp[j],fpp[i]);
       if not IsOne(elm) then
         SetCommutator(rws,j+Length(fpcgs),i,newrd(elm));
       fi;
+      #Add(RELS,Comm(pfgens[j+Length(fpcgs)],pfgens[i])/newrd(elm));
     od;
   od;
   for i in [1..Length(npcgs)] do
@@ -1160,6 +1199,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
       if not IsOne(elm) then
         SetCommutator(rws,j+Length(fpcgs),i+Length(fpcgs),newrd(elm));
       fi;
+      #Add(RELS,Comm(pfgens[j+Length(fpcgs)],pfgens[i+Length(fpcgs)])/newrd(elm));
     od;
   od;
   newpc:=GroupByRws(rws);
@@ -1264,7 +1304,9 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     mon:=FactorFreeMonoidByRelations(mon,mrels);
 
     # transfer wreath ordering info
-    if HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then
+    if Length(mrels)>0
+      and HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then
+
       pres:=ReducedConfluentRewritingSystem(Range(fam!.monhom));
       pf:=OrderingOfRewritingSystem(pres);
       if HasLevelsOfGenerators(pf) then
@@ -1480,11 +1522,12 @@ local ogens,n,fam,type,gens,i;
 
   fam!.tails:=ListWithIdenticalEntries(Length(r.presentation.relators),
     One(ker));
-  ShadowHybrid(fam);
   gens:=Group(gens);
   #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
 
   fam!.wholeGroup:=gens;
+#Error("EMIL");
+  ShadowHybrid(fam);
   return gens;
 
 end;
@@ -1873,7 +1916,13 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
         end);
        #apply:=x->ImagesRepresentative(iso,x));
   elif true then
-    iso:=IsomorphismFpGroup(factor);
+    if Length(top)=0 then
+      iso:=GroupHomomorphismByFunction(G, TRIVIAL_FP_GROUP,
+                                         x->One(TRIVIAL_FP_GROUP),
+                                         x->One(factor):noassert);
+    else
+      iso:=IsomorphismFpGroup(factor);
+    fi;
     isorec:=rec(fphom:=iso,
        apply:=function(x)
          return ImagesRepresentative(iso,x);
@@ -2037,6 +2086,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
           ker:=sub,
+          kerpcgs:=i[1],
           genimgs:=genimgs,
           base:=base,
           strong:=strong,
@@ -2045,7 +2095,6 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   if dowords then
     j.freegens:=gfg;
     j.wordsfreps:=map;
-    j.kerpcgs:=i[1];
     sub:=List(map,
       x->MappedWord(x,gfg,GeneratorsOfGroup(G)));
     j.freps:=sub;
@@ -2160,8 +2209,8 @@ InstallMethod(\in,"hybrid group",IsElmsColls,
 function(elm,g)
 local fam,bits,elq;
   fam:=FamilyObj(elm);
-  if IsIdenticalObj(g,fam!.wholeGroup) or HasSize(g) and
-    Size(g)=fam!.wholeSize then
+  if (IsBound(fam!.wholeGroup) and IsIdenticalObj(g,fam!.wholeGroup)) or
+    (HasSize(g) and Size(g)=fam!.wholeSize) then
     return true;
   fi;
   bits:=HybridBits(g);
@@ -2310,12 +2359,14 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
     Add(gens,HybridGroupElement(nfam,i![1],ImagesRepresentative(nat,i![2])));
   od;
 
-  new:=Group(gens);
+  new:=GroupWithGenerators(gens);
   if ForAny(gens,IsOne) then
     N:=new;
     gens:=Filtered(gens,x->not IsOne(x));
     new:=Group(gens);
     new!.fullGensQuot:=N;
+  else
+    new!.fullGensQuot:=new;
   fi;
   nfam!.wholeGroup:=new;
   return new;
@@ -2585,6 +2636,7 @@ end);
 WreathModuleCoverHybrid:=function(G,module)
 local coh,splitcover,cover,i,ext;
   coh:=TwoCohomologyGeneric(G,module);
+if not HasReducedConfluentRewritingSystem(Range(coh.monhom)) then Error("MUH");fi;
   SetSize(coh.group,Size(G));
 
   splitcover:=WreathModuleSplitCoverHybrid(G,coh);
@@ -3025,6 +3077,11 @@ Print("Have ",Length(rules)," rules\n");
       Add(hgens,HybridGroupElement(fam,fam!.factorone,
         PreImagesRepresentative(iso,i)));
     od;
+
+    if not HasReducedConfluentRewritingSystem(fmon) then
+      nr:=ReducedConfluentRewritingSystem(fmon,ord);
+      SetReducedConfluentRewritingSystem(fmon,nr);
+    fi;
 
     nr:=MakeFpGroupToMonoidHomType1(f,fmon);
     SetConfluentMonoidPresentationForGroup(gens,
@@ -3510,25 +3567,68 @@ if not IsBound(FamilyObj(One(b))!.fphom) then Error("C");fi;
 
 end;
 
-GeneralizedFibonacciGroup:=function(n,m,k)
-local f,gens,rels,i;
-  f:=FreeGroup(n,"x");
-  gens:=GeneratorsOfGroup(f);
-  gens:=Concatenation(gens,gens,gens);
-  rels:=[];
-  for i in [1..n] do
-    Add(rels,gens[i]*gens[i+m]/gens[i+k]);
+HybridEpimorphismSchurCover:=function(epi)
+local a,p,primes,lifts,b,l,gens;
+  a:=Image(epi);
+  if not IsPermGroup(a) then
+    Error("only works for permgroup images, because I'm lazy");
+  fi;
+  primes:=Filtered(Collected(Factors(Size(a))),x->x[2]>1);
+  primes:=List(primes,x->x[1]);
+  primes:=Filtered(primes,x->not IsCyclic(SylowSubgroup(a,x)));
+
+  # now do for every prime in turn
+  lifts:=[];
+  for p in primes do
+    l:=epi;
+    repeat
+      b:=Image(l);
+      if false and not IsPermGroup(b) then
+        # force perm
+        l:=l*IsomorphismPermGroup(b);
+        b:=Image(l);
+      fi;
+      gens:=MappingGeneratorsImages(l)[2];
+      l:=LiftQuotientHybrid(l,p:
+        irr:=[gens,[TrivialModule(Length(gens),GF(p))]]);
+      Print(p,":",Size(Image(l)),"\n");
+    until Size(Image(l))=Size(b);
+    if Size(Image(l))>Size(a) then Add(lifts,l);fi;
   od;
-  return f/rels;
+  if Length(lifts)=0 then
+    SetSize(Source(epi),Size(a));
+    return IdentityMapping(a);
+  fi;
+  if not ForAll(lifts,x->MappingGeneratorsImages(x)[2]=GeneratorsOfGroup(Range(x))) then
+    Error("Range has other generators");
+  fi;
+  b:=Range(lifts[1]);
+  for p in [2..Length(lifts)] do
+    b:=SubdirectHybrid(b,Range(lifts[p]));
+  od;
+  return GroupHomomorphismByImagesNC(b,a,GeneratorsOfGroup(b),
+    MappingGeneratorsImages(epi)[2]);
 end;
 
-CavicchioliGroup:=function(q)
-local f,a,b,rels;
-  f:=FreeGroup("a","b");
-  a:=f.1;b:=f.2;
-  rels:=[a*b*a^-2*b*a*b^-1,a*(b^-1*a^3*b^-1*a^-3)^q];
-  return f/rels;
-end;
+#GeneralizedFibonacciGroup:=function(n,m,k)
+#local f,gens,rels,i;
+#  f:=FreeGroup(n,"x");
+#  gens:=GeneratorsOfGroup(f);
+#  gens:=Concatenation(gens,gens,gens);
+#  rels:=[];
+#  for i in [1..n] do
+#    Add(rels,gens[i]*gens[i+m]/gens[i+k]);
+#  od;
+#  return f/rels;
+#end;
+#
+#CavicchioliGroup:=function(q)
+#local f,a,b,rels;
+#  f:=FreeGroup("a","b");
+#  a:=f.1;b:=f.2;
+#  rels:=[a*b*a^-2*b*a*b^-1,a*(b^-1*a^3*b^-1*a^-3)^q];
+#  return f/rels;
+#end;
 
 SaveHybridGroup:=function(file,fam)
 local pc,pcgs,auts,str,free,fp,mon,pres,t,rws,ord;
@@ -4128,6 +4228,7 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,
   qtr:=[];
   pci:=fg.parentffs.pcisom;
   keri:=Image(pci,fg.ker);
+  if not IsBound(fs.ker) then fs.ker:=SubgroupNC(fam!.wholeGroup,fs.pcgs);fi;
   kt:=RightTransversal(keri,Image(pci,fs.ker));
 
   nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
@@ -4500,8 +4601,12 @@ local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
     if i>1 then
       # how to split further?
       a:=Product(ro{[1..n]});
-      # we want to store about 1000 images, so rounded down log base 1000/10
-      a:=RootInt(a,LogInt(a,100))*ro[1];
+      if a<1000 then
+        a:=1000;
+      else
+        # we want to store about 1000 images, so rounded down log base 1000/10
+        a:=RootInt(a,LogInt(a,100))*ro[1];
+      fi;
 
       # now chunks
       s:=1;
