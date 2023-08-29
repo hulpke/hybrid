@@ -4029,10 +4029,14 @@ local fam,ffs,r;
   if Size(Image(ffs.factorhom))>1 then
     fam:=FamilyObj(One(G));
     r:=Random(Image(ffs.factorhom));
-    #r:=PreImagesRepresentative(ffs.factorhom,Random(Image(ffs.factorhom)));
-    r:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,r));
-    r:=UnderlyingElement(r);
-    r:=HybridGroupElement(fam,r,fam!.normalone);
+    if G<>FamilyObj(One(G))!.wholeGroup then
+      r:=PreImagesRepresentative(ffs.factorhom,Random(Image(ffs.factorhom)));
+    else
+      # directly w/o mult
+      r:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,r));
+      r:=UnderlyingElement(r);
+      r:=HybridGroupElement(fam,r,fam!.normalone);
+    fi;
   else
     r:=One(G);
   fi;
