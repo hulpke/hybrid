@@ -52,8 +52,15 @@ local l;
   fi;
 end;
 
-TranslatedMonoidRules:=function(monhom)
-local fam,t,r,i,offset,deadend,dag,tt,w,a,j,pre;
+TranslateMonoidRules:=function(arg)
+local afam,pfam,monhom,fam,t,r,i,offset,deadend,dag,tt,w,a,j,pre;
+  afam:=arg[1];
+  if Length(arg)=1 then
+    pfam:=fail;
+  else
+    pfam:=arg[2];
+  fi;
+  monhom:=afam!.monhom;
   fam:=FamilyObj(One(Range(monhom)));
   pre:=function(e)
   local a;
@@ -109,6 +116,7 @@ local fam,t,r,i,offset,deadend,dag,tt,w,a,j,pre;
   od;
   r.dag:=dag;
 
+  afam!.tzrules:=r;
   return r;
 end;
 
@@ -1017,7 +1025,7 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
   fam!.presentation:=r.presentation;
   fam!.factgrp:=r.group;
   fam!.monhom:=r.monhom;
-  fam!.tzrules:=TranslatedMonoidRules(fam!.monhom);
+  TranslateMonoidRules(fam);
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
@@ -1393,7 +1401,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
           return ElementOfFpGroup(FamilyObj(One(pf)),
                   AssocWordByLetterRep(FamilyObj(UnderlyingElement(One(FreeGroupOfFpGroup(pf)))),g));
         end);
-  nfam!.tzrules:=TranslatedMonoidRules(nfam!.monhom);
+  TranslateMonoidRules(nfam);
 
   nfam!.quickermult:=fail;
   nfam!.isShadowFamily:=true;
@@ -1501,7 +1509,8 @@ local ogens,n,fam,type,gens,i;
   fam!.presentation:=r.presentation;
   fam!.factgrp:=r.group;
   fam!.monhom:=r.monhom;
-  fam!.tzrules:=TranslatedMonoidRules(fam!.monhom);
+if not HasReducedConfluentRewritingSystem(Range(r.monhom)) then Error("huh");fi;
+  TranslateMonoidRules(fam);
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
   fam!.autsinv:=List(auts,Inverse);
@@ -2250,7 +2259,7 @@ local fam,fs,pcgs,top,map,ker,auts,nfam,gens,type,i,j,tails,new,correct,newgens;
   nfam!.presentation:=fam!.presentation;
   nfam!.factgrp:=fam!.factgrp;
   nfam!.monhom:=fam!.monhom;
-  nfam!.tzrules:=TranslatedMonoidRules(nfam!.monhom);
+  TranslateMonoidRules(nfam);
   nfam!.fphom:=fam!.fphom;
   nfam!.factorone:=fam!.factorone;
   auts:=List(top,x->GroupHomomorphismByImagesNC(ker,ker,pcgs,
@@ -2317,7 +2326,7 @@ local fam,fs,ker,pcgs,nat,nfam,auts,gens,i,type,new;
   nfam!.factgrp:=fam!.factgrp;
   nfam!.factorone:=fam!.factorone;
   nfam!.monhom:=fam!.monhom;
-  nfam!.tzrules:=TranslatedMonoidRules(nfam!.monhom);
+  TranslateMonoidRules(nfam);
   nfam!.fphom:=fam!.fphom;
   nfam!.normalnathom:=nat;
 
@@ -2414,7 +2423,7 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
   nfam!.presentation:=fg!.presentation;
   nfam!.factgrp:=fg!.factgrp;
   nfam!.monhom:=fg!.monhom;
-  nfam!.tzrules:=TranslatedMonoidRules(nfam!.monhom);
+  TranslateMonoidRules(nfam);
   nfam!.fphom:=fg!.fphom;
   nfam!.factorone:=fg!.factorone;
   nfam!.auts:=auts;
@@ -2630,7 +2639,7 @@ local coh,splitcover,cover,i,ext;
   cover:=OwnHybrid(splitcover);
   for i in coh.cohomology do
     ext:=HybridGroupCocycle(coh,i);
-GENS:=GeneratorsOfGroup(ext);
+#GENS:=GeneratorsOfGroup(ext);
     ShadowHybrid(FamilyObj(One(ext)));
 
     ext:=List(coh.presentation.prewords,
@@ -3049,6 +3058,7 @@ local hgens,fam,fs,iso,kfp,pres,f,rels,head,tail,i,j,pcgs,gens,domon,
     nr:=KnuthBendixRewritingSystem(fmon,ord:isconfluent);
     nr!.reduced:=true;
 Print("Have ",Length(rules)," rules\n");
+    SetReducedConfluentRewritingSystem(fmon,nr);
 
     #i:=KnuthBendixRewritingSystem(fmon,ord);
     #MakeConfluent(i);
@@ -3636,7 +3646,7 @@ local pc,pcgs,auts,str,free,fp,mon,pres,t,rws,ord;
   AppendTo(file,"fam!.fphom:=GroupHomomorphismByImagesNC(fam!.factgrp,fp,GeneratorsOfGroup(fam!.factgrp),\n",
     "    GeneratorsOfGroup(fp));\n");
   AppendTo(file,"fam!.monhom:=MakeFpGroupToMonoidHomType1(fp,mon);\n");
-  AppendTo(file,"fam!.tzrules:=TranslatedMonoidRules(fam!.monhom);\n");
+  AppendTo(file,"TranslateMonoidRules(fam);\n");
   AppendTo(file,"fam!.auts:=auts;\n");
   AppendTo(file,"fam!.autsinv:=List(auts,Inverse);\n");
   AppendTo(file,"fam!.factorone:=One(free);\n");
