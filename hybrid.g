@@ -199,7 +199,9 @@ InstallMethod(One,"hybrid group elements",
 
 HybridNormalWord:=function(fam,w)
   w:=ImagesRepresentative(fam!.monhom,w);
-if not HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then Error("RedConf"); fi;
+  if not HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then 
+    Error("RedConf");
+  fi;
   w:=ReducedForm(ReducedConfluentRewritingSystem(Range(fam!.monhom)),
     UnderlyingElement(w));
   w:=ElementOfFpMonoid(FamilyObj(One(Range(fam!.monhom))),w);
@@ -1067,7 +1069,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
   if IsBound(fam!.quickermult) then return fail;fi;
 
   ff:=GeneratorsOfGroup(fam!.presentation.group);
-  # find largest normal pcgs
+  # find largest normal solvable
   g:=fam!.factgrp;
   gens:=GeneratorsOfGroup(g);
   if IsHybridGroupElementCollection(g) then
@@ -1160,6 +1162,7 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
   end;
 
 
+#RELS:=[];
   rws:=SingleCollector(pf,relo);
   # store powers
   for i in [1..Length(fpcgs)] do
@@ -1862,6 +1865,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   else
     sz:=fail;
   fi;
+
   dowords:=ValueOption("dowords")<>false; # default to true
   if IsBound(G!.hybridbits) and (dowords=false or
     IsBound(G!.hybridbits.wordskerpcgs)) then
@@ -1895,7 +1899,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fi;
 
 
-  if sz=fail then sz:=Size(fam!.normal);
+  if sz=fail then sz:=Size(fam!.normal); # upper bound
   else sz:=sz/Size(factor);fi;
 
   # calculate elements corresponding to fp generators
@@ -1914,20 +1918,12 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
        apply:=function(x)
          return HybridNormalWord(fam,ImagesRepresentative(iso,x));
         end);
-       #apply:=x->ImagesRepresentative(iso,x));
   elif true then
-    if Length(top)=0 then
-      iso:=GroupHomomorphismByFunction(G, TRIVIAL_FP_GROUP,
-                                         x->One(TRIVIAL_FP_GROUP),
-                                         x->One(factor):noassert);
-    else
-      iso:=IsomorphismFpGroup(factor);
-    fi;
+    iso:=IsomorphismFpGroup(factor);
     isorec:=rec(fphom:=iso,
        apply:=function(x)
          return ImagesRepresentative(iso,x);
         end);
-       #apply:=x->ImagesRepresentative(iso,x));
   else
     isorec:=ShallowCopy(ConfluentMonoidPresentationForGroup(factor));
     iso:=isorec.fphom;
@@ -1970,6 +1966,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     gf:=G;
     gfg:=GeneratorsOfGroup(G);
     addker:=function(w)
+      if Size(sub)=sz then return;fi; # not needed
       if not w![2] in sub then
         Add(ker,w);
         sub:=ClosureGroup(sub,w![2]);
@@ -1996,46 +1993,20 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     addker(gfg[i]);
   od;
 
-  # strip generators of group with representatives word and use powers.
-  for i in [1..Length(sel)] do
-    if Size(sub)<sz then
-      j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
-        #ImagesRepresentative(iso,top[i])),
-        isorec.apply(top[i])),
-        FreeGeneratorsOfFpGroup(fp),map);
-# test: avoid these costly expressions
-# addker(j);
-      addker(gfg[sel[i]]^Order(top[i]));
-    fi;
-  od;
-
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
     and Size(sub)<sz and Size(factor)>1 then
 
     # G-elements for fp generators
     prelms:=List(map,x->MappedWord(x,gfg{sel},GeneratorsOfGroup(G){sel}));
     for i in RelatorsOfFpGroup(fp) do
-      if Size(sub)<sz then
-        addker(MappedWord(i,FreeGeneratorsOfFpGroup(fp),map),
-               MappedWord(i,FreeGeneratorsOfFpGroup(fp),prelms));
-      fi;
+      addker(MappedWord(i,FreeGeneratorsOfFpGroup(fp),map),
+              MappedWord(i,FreeGeneratorsOfFpGroup(fp),prelms));
     od;
-
-    ## presentation
-    #j:=IsomorphismFpGroupByGenerators(factor,top);
-    #j:=Range(j);
-    #for i in RelatorsOfFpGroup(j) do
-    #  if Size(sub)<sz then
-    #    i:=MappedWord(i,FreeGeneratorsOfFpGroup(j),gfg{sel});
-    #    addker(i);
-    #  fi;
-    #od;
 
   elif Size(sub)<sz then
     # evaluate relators
-    for i in List(RelatorsOfFpGroup(fp),
-                      x->MappedWord(x,FreeGeneratorsOfFpGroup(fp),map)) do
-      addker(i);
+    for i in RelatorsOfFpGroup(fp) do
+      addker(MappedWord(i,FreeGeneratorsOfFpGroup(fp),map));
     od;
   fi;
 
@@ -2046,6 +2017,18 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     od;
   fi;
 
+  if Length(top)>0 and not
+  # avoid IsNormal(G,SubgroupNC(G,ker))
+    ForAll(GeneratorsOfGroup(G),x->ForAll(ker,y->(y^x)![2] in sub))
+  then
+    i:=1;
+    while i<=Length(ker) and Size(sub)<sz do
+      for j in gfg do
+        addker(kerw[i]^j);
+      od;
+      i:=i+1;
+    od;
+  fi;
 
   # short words
   if Size(sub)<sz and Length(sel)>0 and dowords then
@@ -2056,16 +2039,19 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     od;
   fi;
 
+  # strip generators of group with representatives word and use powers.
+  for i in [1..Length(sel)] do
+    if Size(sub)<sz then
+      j:=gfg[sel[i]]/MappedWord(UnderlyingElement(
+        #ImagesRepresentative(iso,top[i])),
+        isorec.apply(top[i])),
+        FreeGeneratorsOfFpGroup(fp),map);
+      addker(j);
+      addker(gfg[sel[i]]^Order(top[i]));
+    fi;
+  od;
+
   # form normal closure (only needed if not normal)
-  if Length(top)>0 and not IsNormal(G,SubgroupNC(G,ker)) then
-    i:=1;
-    while i<=Length(ker) and Size(sub)<sz do
-      for j in gfg do
-        addker(kerw[i]^j);
-      od;
-      i:=i+1;
-    od;
-  fi;
 
   if dowords then
     ker:=Concatenation(ker,xker);
@@ -2636,7 +2622,6 @@ end);
 WreathModuleCoverHybrid:=function(G,module)
 local coh,splitcover,cover,i,ext;
   coh:=TwoCohomologyGeneric(G,module);
-if not HasReducedConfluentRewritingSystem(Range(coh.monhom)) then Error("MUH");fi;
   SetSize(coh.group,Size(G));
 
   splitcover:=WreathModuleSplitCoverHybrid(G,coh);
@@ -2645,6 +2630,7 @@ if not HasReducedConfluentRewritingSystem(Range(coh.monhom)) then Error("MUH");f
   cover:=OwnHybrid(splitcover);
   for i in coh.cohomology do
     ext:=HybridGroupCocycle(coh,i);
+GENS:=GeneratorsOfGroup(ext);
     ShadowHybrid(FamilyObj(One(ext)));
 
     ext:=List(coh.presentation.prewords,
@@ -3077,11 +3063,6 @@ Print("Have ",Length(rules)," rules\n");
       Add(hgens,HybridGroupElement(fam,fam!.factorone,
         PreImagesRepresentative(iso,i)));
     od;
-
-    if not HasReducedConfluentRewritingSystem(fmon) then
-      nr:=ReducedConfluentRewritingSystem(fmon,ord);
-      SetReducedConfluentRewritingSystem(fmon,nr);
-    fi;
 
     nr:=MakeFpGroupToMonoidHomType1(f,fmon);
     SetConfluentMonoidPresentationForGroup(gens,
@@ -3567,68 +3548,25 @@ if not IsBound(FamilyObj(One(b))!.fphom) then Error("C");fi;
 
 end;
 
-HybridEpimorphismSchurCover:=function(epi)
-local a,p,primes,lifts,b,l,gens;
-  a:=Image(epi);
-  if not IsPermGroup(a) then
-    Error("only works for permgroup images, because I'm lazy");
-  fi;
-  primes:=Filtered(Collected(Factors(Size(a))),x->x[2]>1);
-  primes:=List(primes,x->x[1]);
-  primes:=Filtered(primes,x->not IsCyclic(SylowSubgroup(a,x)));
-
-  # now do for every prime in turn
-  lifts:=[];
-  for p in primes do
-    l:=epi;
-    repeat
-      b:=Image(l);
-      if false and not IsPermGroup(b) then
-        # force perm
-        l:=l*IsomorphismPermGroup(b);
-        b:=Image(l);
-      fi;
-      gens:=MappingGeneratorsImages(l)[2];
-      l:=LiftQuotientHybrid(l,p:
-        irr:=[gens,[TrivialModule(Length(gens),GF(p))]]);
-      Print(p,":",Size(Image(l)),"\n");
-    until Size(Image(l))=Size(b);
-    if Size(Image(l))>Size(a) then Add(lifts,l);fi;
+GeneralizedFibonacciGroup:=function(n,m,k)
+local f,gens,rels,i;
+  f:=FreeGroup(n,"x");
+  gens:=GeneratorsOfGroup(f);
+  gens:=Concatenation(gens,gens,gens);
+  rels:=[];
+  for i in [1..n] do
+    Add(rels,gens[i]*gens[i+m]/gens[i+k]);
   od;
-  if Length(lifts)=0 then
-    SetSize(Source(epi),Size(a));
-    return IdentityMapping(a);
-  fi;
-  if not ForAll(lifts,x->MappingGeneratorsImages(x)[2]=GeneratorsOfGroup(Range(x))) then
-    Error("Range has other generators");
-  fi;
-  b:=Range(lifts[1]);
-  for p in [2..Length(lifts)] do
-    b:=SubdirectHybrid(b,Range(lifts[p]));
-  od;
-  return GroupHomomorphismByImagesNC(b,a,GeneratorsOfGroup(b),
-    MappingGeneratorsImages(epi)[2]);
+  return f/rels;
 end;
 
-#GeneralizedFibonacciGroup:=function(n,m,k)
-#local f,gens,rels,i;
-#  f:=FreeGroup(n,"x");
-#  gens:=GeneratorsOfGroup(f);
-#  gens:=Concatenation(gens,gens,gens);
-#  rels:=[];
-#  for i in [1..n] do
-#    Add(rels,gens[i]*gens[i+m]/gens[i+k]);
-#  od;
-#  return f/rels;
-#end;
-#
-#CavicchioliGroup:=function(q)
-#local f,a,b,rels;
-#  f:=FreeGroup("a","b");
-#  a:=f.1;b:=f.2;
-#  rels:=[a*b*a^-2*b*a*b^-1,a*(b^-1*a^3*b^-1*a^-3)^q];
-#  return f/rels;
-#end;
+CavicchioliGroup:=function(q)
+local f,a,b,rels;
+  f:=FreeGroup("a","b");
+  a:=f.1;b:=f.2;
+  rels:=[a*b*a^-2*b*a*b^-1,a*(b^-1*a^3*b^-1*a^-3)^q];
+  return f/rels;
+end;
 
 SaveHybridGroup:=function(file,fam)
 local pc,pcgs,auts,str,free,fp,mon,pres,t,rws,ord;
@@ -4129,14 +4067,10 @@ local fam,ffs,r;
   if Size(Image(ffs.factorhom))>1 then
     fam:=FamilyObj(One(G));
     r:=Random(Image(ffs.factorhom));
-    if G<>FamilyObj(One(G))!.wholeGroup then
-      r:=PreImagesRepresentative(ffs.factorhom,Random(Image(ffs.factorhom)));
-    else
-      # directly w/o mult
-      r:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,r));
-      r:=UnderlyingElement(r);
-      r:=HybridGroupElement(fam,r,fam!.normalone);
-    fi;
+    #r:=PreImagesRepresentative(ffs.factorhom,Random(Image(ffs.factorhom)));
+    r:=HybridNormalWord(fam,ImagesRepresentative(fam!.fphom,r));
+    r:=UnderlyingElement(r);
+    r:=HybridGroupElement(fam,r,fam!.normalone);
   else
     r:=One(G);
   fi;
@@ -4232,7 +4166,6 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,
   qtr:=[];
   pci:=fg.parentffs.pcisom;
   keri:=Image(pci,fg.ker);
-  if not IsBound(fs.ker) then fs.ker:=SubgroupNC(fam!.wholeGroup,fs.pcgs);fi;
   kt:=RightTransversal(keri,Image(pci,fs.ker));
 
   nas:=GroupHomomorphismByImagesNC(S,qs,GeneratorsOfGroup(S),a);
@@ -4572,6 +4505,61 @@ local c;
   return a->a*c;
 end;
 
+if not IsBound(AGSRCharacteristicSeries) then
+  # copied from lib/autsr.gi in newer version
+  # form a characterististic series through radical with elab factors
+  BindGlobal("AGSRCharacteristicSeries",function(G,r)
+  local scharorb,somechar,d,i,j,u,v;
+    d:=Filtered(StructuralSeriesOfGroup(G),x->IsSubset(r,x));
+    # refine
+    d:=RefinedSubnormalSeries(d,Centre(G));
+    d:=RefinedSubnormalSeries(d,Centre(r));
+    scharorb:=fail;
+    somechar:=ValueOption("someCharacteristics");
+    if somechar<>fail then
+      if IsRecord(somechar) then
+        if IsBound(somechar.orbits) then
+          scharorb:=somechar.orbits;
+        fi;
+        somechar:=somechar.subgroups;
+      fi;
+      for i in somechar do
+        d:=RefinedSubnormalSeries(d,i);
+      od;
+    fi;
+    for i in PrimeDivisors(Size(r)) do
+      u:=PCore(r,i);
+      if Size(u)>1 then
+        d:=RefinedSubnormalSeries(d,u);
+        j:=1;
+        repeat
+          v:=Agemo(u,i,j);
+          if Size(v)>1 then
+            d:=RefinedSubnormalSeries(d,v);
+          fi;
+          j:=j+1;
+        until Size(v)=1;
+        j:=1;
+        repeat
+          if Size(u)>=2^24 then
+            v:=u; # bail out as method for `Omega` will do so.
+          else
+            v:=Omega(u,i,j);
+            if Size(v)<Size(u) then
+              d:=RefinedSubnormalSeries(d,v);
+            fi;
+            j:=j+1;
+          fi;
+
+        until Size(v)=Size(u);
+      fi;
+
+    od;
+    Assert(1,ForAll([1..Length(d)-1],x->Size(d[x])<>Size(d[x+1])));
+    return d;
+  end);
+fi;
+
 InstallMethod(SpeedupDataPcHom,"pcgs",true,
   [IsGroupGeneralMappingByPcgs and IsTotal],0,
 function(hom)
@@ -4592,16 +4580,22 @@ local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
     pcgs:=hom!.sourcePcgs;
     ro:=RelativeOrders(pcgs);
     n:=Length(pcgs);
-    i:=n+1;
-    while i>1 and IsElementaryAbelian(Group(pcgs{[i-1..n]})) and
-      IsNormal(g,Subgroup(g,pcgs{[i-1..n]})) do
-      i:=i-1;
-    od;
-    if i=n+1 then Error("none");fi;
-    field:=GF(ro[i]);
-    n:=i-1;
+    # bottom characteristic elab level -- this can be done by matrix
+    s:=AGSRCharacteristicSeries(g,g);
+    s:=Filtered(s,x->Size(x)=1 or x=SubgroupNC(g,pcgs{[Minimum(
+      List(GeneratorsOfGroup(x),y->DepthOfPcElement(pcgs,y)))..n]}));
+    s:=Filtered(s,x->IsElementaryAbelian(x) and Size(x)>1);
+    if Length(s)>0 then
+      s:=s[1];
+      i:=Minimum(List(GeneratorsOfGroup(s),x->DepthOfPcElement(pcgs,x)));
+      field:=GF(ro[i]);
+      depths:=[i,n+1];
+    else
+      field:=fail;
+      depths:=[n+1];
+      i:=n+1;
+    fi;
 
-    depths:=[1];
     if i>1 then
       # how to split further?
       a:=Product(ro{[1..n]});
@@ -4613,32 +4607,21 @@ local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
       fi;
 
       # now chunks
-      s:=1;
-      i:=1;
-      while i<=n do
-        while i<=n and Product(ro{[s..i]})<a do
-          i:=i+1;
-        od;
-        Add(depths,i);
-        i:=i+1;
+      while i>1 do
+        i:=i-1;
         s:=i;
+        while s>1 and Product(ro{[s..i]})<a do
+          s:=s-1;
+        od;
+        AddSet(depths,s);
+        i:=s;
       od;
     fi;
-    if depths[Length(depths)]<>n+1 then Error("EEE");fi;
-    Add(depths,Length(pcgs)+1);
+
+    if not 1 in depths then Error("EEE");fi;
 
     pats:=[];
     for i in [1..Length(depths)-1] do
-      #a:=Immutable(Set(Cartesian(List(ro{[depths[i]..depths[i+1]-1]},
-      #  x->List([0..x-1])))));
-      #s:=Position(pats,a);
-      #if s<>fail then
-      #  Add(pats,pats[s]);
-      #  Add(dics,dics[s]);
-      #else
-      #  Add(pats,a);
-      #  s:=NewDictionary(s[1],true);
-      #fi;
       Add(pats,PatternEnumerateFunction(ro{[depths[i]..depths[i+1]-1]}));
     od;
 
@@ -4648,14 +4631,19 @@ local g,pcgs,n,i,depths,field,mat,ro,a,s,pats,r;
             depths:=depths);
 
     g!.automSpeedupData:=r;
+
   fi;
 
-  # set mat to lowest level change
-  n:=Length(r.pcgs);
-  i:=r.depths[Length(r.depths)-1];
-  mat:=List(hom!.sourcePcgsImages{[i..n]},
-    x->ExponentsOfPcElement(r.pcgs,x){[i..n]});
-  mat:=ImmutableMatrix(r.field,mat*One(r.field));
+  if r.field<>fail then
+    # set mat to lowest level change
+    n:=Length(r.pcgs);
+    i:=r.depths[Length(r.depths)-1];
+    mat:=List(hom!.sourcePcgsImages{[i..n]},
+      x->ExponentsOfPcElement(r.pcgs,x){[i..n]});
+    mat:=ImmutableMatrix(r.field,mat*One(r.field));
+  else
+    mat:=fail;
+  fi;
 
   r:=rec(groupData:=r,mat:=mat,vals:=List(r.pats,x->[]));
   return r;
@@ -4667,17 +4655,26 @@ InstallMethod( ImagesRepresentative,
           and HasSpeedupDataPcHom,
           IsMultiplicativeElementWithInverse and IsNBitsPcWordRep],100,
 function(hom,elm)
-local r,rg,depths,pcgs,n,v,e,i,a,b,ld;
+local r,rg,depths,pcgs,n,v,e,i,a,b,ld,top;
   r:=SpeedupDataPcHom(hom);
+  if r=fail then TryNextMethod();fi;
   rg:=r.groupData;
   depths:=rg.depths;
   # in next line subtract 1 to use the lowest level matrix
   ld:=Length(depths);
   pcgs:=rg.pcgs;
   n:=Length(pcgs);
+
   v:=OneOfPcgs(pcgs);
   e:=ExponentsOfPcElement(pcgs,elm);
-  for i in [1..ld-1] do
+
+  if rg.field=fail then
+    top:=ld;
+  else
+    top:=ld-1;
+  fi;
+
+  for i in [1..top-1] do
     a:=e{[depths[i]..depths[i+1]-1]};
     b:=rg.pats[i](a)+1; # patterns start at 0
     if not IsBound(r.vals[i][b]) then
@@ -4686,9 +4683,9 @@ local r,rg,depths,pcgs,n,v,e,i,a,b,ld;
     fi;
     v:=v*r.vals[i][b];
   od;
-  b:=depths[ld];
-  if b>=n then return v;fi;
-  a:=e{[b..Length(pcgs)]};
+  if rg.field=fail then return v;fi;
+  b:=depths[ld-1];
+  a:=e{[b..n]};
   #a:=ImmutableVector(rg.field,a*One(rg.field))*r.mat;
   a:=a*One(rg.field);
   ConvertToVectorRep(a,Size(rg.field));
