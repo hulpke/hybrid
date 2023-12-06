@@ -207,7 +207,7 @@ InstallMethod(One,"hybrid group elements",
 
 HybridNormalWord:=function(fam,w)
   w:=ImagesRepresentative(fam!.monhom,w);
-  if not HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then 
+  if not HasReducedConfluentRewritingSystem(Range(fam!.monhom)) then
     Error("RedConf");
   fi;
   w:=ReducedForm(ReducedConfluentRewritingSystem(Range(fam!.monhom)),
@@ -1631,7 +1631,8 @@ local module,gens,i,j,k,f,d,ad,adf,p,idx,m,vecs,ker,pcgs,aut,auts,prd,new,a,fam,
     Add(new,b);
   od;
 
-  return Group(new);
+  new:=Group(new);
+  return new;
 
 end;
 
@@ -2026,6 +2027,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     od;
   fi;
 
+  # form normal closure (only needed if not normal)
   if Length(top)>0 and not
   # avoid IsNormal(G,SubgroupNC(G,ker))
     ForAll(GeneratorsOfGroup(G),x->ForAll(ker,y->(y^x)![2] in sub))
@@ -2060,7 +2062,19 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     fi;
   od;
 
-  # form normal closure (only needed if not normal)
+  # once more normal closure (only needed if not normal)
+  if Length(top)>0 and not
+  # avoid IsNormal(G,SubgroupNC(G,ker))
+    ForAll(GeneratorsOfGroup(G),x->ForAll(ker,y->(y^x)![2] in sub))
+  then
+    i:=1;
+    while i<=Length(ker) and Size(sub)<sz do
+      for j in gfg do
+        addker(kerw[i]^j);
+      od;
+      i:=i+1;
+    od;
+  fi;
 
   if dowords then
     ker:=Concatenation(ker,xker);
@@ -2077,6 +2091,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   else
     i:=[CanonicalPcgsWrtFamilyPcgs(sub)];
   fi;
+
+  if HasSize(G) and Size(G)<>Size(sub)*Size(factor) then Error("EEE!");fi;
 
   sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
@@ -2635,6 +2651,7 @@ local coh,splitcover,cover,i,ext;
 
   splitcover:=WreathModuleSplitCoverHybrid(G,coh);
   splitcover!.originalFactor:=G;
+
   ShadowHybrid(FamilyObj(One(splitcover)));
   cover:=OwnHybrid(splitcover);
   for i in coh.cohomology do
@@ -3408,7 +3425,7 @@ and false # disable as not all data there yet
 end;
 
 
-LiftQuotientHybrid:=function(q,p)
+BindGlobal("LiftQuotientHybrid",function(q,p)
 local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
       fp,fam,mo;
   G:=Source(q);
@@ -3556,7 +3573,40 @@ if not IsBound(FamilyObj(One(b))!.fphom) then Error("C");fi;
   fi;
   return b;
 
-end;
+end);
+
+
+BindGlobal("SchurCoverHybrid",function(g)
+local fpiso,r,n,c,gens,q,f,a,oa,irr,primes,p;
+  fpiso:=ConfluentMonoidPresentationForGroup(g).fphom;
+  r:=Range(fpiso);
+  n:=Length(GeneratorsOfGroup(r));
+  c:=SchurCoverFP(r);
+  gens:=GeneratorsOfGroup(c);
+  q:=GroupHomomorphismByImages(c,g,gens,
+    Concatenation(List([1..n],x->PreImagesRepresentative(fpiso,r.(x))),
+      ListWithIdenticalEntries(Length(gens)-n,One(g))));
+
+  primes:=Set(Factors(Size(g)));
+  primes:=Filtered(primes,x->Size(g) mod (x^2)=0);
+  f:=[];
+    c:=q;
+  for p in primes do
+    a:=Range(c);oa:=TrivialSubgroup(a);
+    while Size(a)>Size(oa) do
+      irr:=[GeneratorsOfGroup(a),
+        [TrivialModule(Length(GeneratorsOfGroup(a)),GF(p))]];
+      oa:=a;
+      c:=LiftQuotientHybrid(c,p:irr:=irr);
+      a:=Range(c);
+    od;
+    Add(f,c);
+  od;
+  Error();
+
+  return q;
+end);
+
 
 GeneralizedFibonacciGroup:=function(n,m,k)
 local f,gens,rels,i;
