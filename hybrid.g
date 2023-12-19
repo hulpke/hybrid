@@ -3434,6 +3434,11 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     a:=ImagesSource(q);
   else
     a:=Group(List(GeneratorsOfGroup(G),x->ImagesRepresentative(q,x)));
+    if not HasImagesSource(q) then SetImagesSource(q,a);fi;
+  fi;
+  if HasConfluentMonoidPresentationForGroup(Range(q)) then
+    SetConfluentMonoidPresentationForGroup(a,
+      ConfluentMonoidPresentationForGroup(Range(q)));
   fi;
 
   irr:=ValueOption("irr");
@@ -3577,20 +3582,39 @@ end);
 
 
 BindGlobal("SchurCoverHybrid",function(g)
-local fpiso,r,n,c,gens,q,f,a,oa,irr,primes,p;
+local fpiso,r,n,c,gens,q,f,a,oa,irr,primes,p,sim;
+  # use the presentation we anyhow need
   fpiso:=ConfluentMonoidPresentationForGroup(g).fphom;
   r:=Range(fpiso);
+  sim:=IsomorphismSimplifiedFpGroup(r);
+  if Source(sim)<>Range(sim) then
+    r:=Range(sim);
+    fpiso:=fpiso*sim;
+  fi;
   n:=Length(GeneratorsOfGroup(r));
   c:=SchurCoverFP(r);
   gens:=GeneratorsOfGroup(c);
   q:=GroupHomomorphismByImages(c,g,gens,
     Concatenation(List([1..n],x->PreImagesRepresentative(fpiso,r.(x))),
       ListWithIdenticalEntries(Length(gens)-n,One(g))));
+  sim:=IsomorphismSimplifiedFpGroup(c);
+  f:=IsomorphismSimplifiedFpGroup(Range(sim));
+  while Length(GeneratorsOfGroup(Range(f)))
+      <Length(GeneratorsOfGroup(Source(f))) do
+    sim:=sim*f;
+    f:=IsomorphismSimplifiedFpGroup(Range(sim));
+  od;
+  q:=InverseGeneralMapping(sim)*q;
+  f:=Source(q);
+  if MappingGeneratorsImages(q)[1]<>GeneratorsOfGroup(f) then
+    q:=GroupHomomorphismByImagesNC(f,Range(q),GeneratorsOfGroup(f),
+      List(GeneratorsOfGroup(f),x->ImagesRepresentative(q,x)));
+  fi;
 
   primes:=Set(Factors(Size(g)));
   primes:=Filtered(primes,x->Size(g) mod (x^2)=0);
-  f:=[];
-    c:=q;
+  #f:=[];
+  c:=q;
   for p in primes do
     a:=Range(c);oa:=TrivialSubgroup(a);
     while Size(a)>Size(oa) do
@@ -3600,11 +3624,11 @@ local fpiso,r,n,c,gens,q,f,a,oa,irr,primes,p;
       c:=LiftQuotientHybrid(c,p:irr:=irr);
       a:=Range(c);
     od;
-    Add(f,c);
+    #Add(f,c);
   od;
-  Error();
-
-  return q;
+  f:=GroupHomomorphismByImagesNC(Range(c),g,MappingGeneratorsImages(c)[2],
+    List(MappingGeneratorsImages(c)[1],x->ImagesRepresentative(q,x)));
+  return f;
 end);
 
 
