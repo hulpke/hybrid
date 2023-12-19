@@ -1364,6 +1364,8 @@ local g,gens,s,i,fpcgs,npcgs,relo,pf,pfgens,rws,j,ff,fpp,npp,elm,
     Add(gens,HybridGroupElement(nfam,nfam!.factorone,i));
   od;
 
+  nfam!.wholeGroup:=Group(gens);
+
   # recalculate tails
   nfam!.tails:=List(pres.relators,x->newrd(MappedWord(
 
