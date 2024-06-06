@@ -3961,7 +3961,7 @@ InstallMethod(FittingFreeLiftSetup,"hybrid",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(g)
 local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
-  fc,fcr,nc,src,i,j,au,w,p,u;
+  fc,fcr,nc,src,i,j,au,w,p,u,nt;
   fam:=FamilyObj(One(g));
   b:=HybridBits(g);
   # can we used induced form?
@@ -3990,7 +3990,17 @@ local fam,b,geni,fmap,nat,dep,oc,iso,kb,mfam,pc,a,ser,premap,prerep,frad,ffh,
     a:=List(GeneratorsOfGroup(g),x->GroupHomomorphismByImagesNC(b.ker,b.ker,
       oc,List(pc,y->(y^x)![2])));
 
-    ser:=InvariantElementaryAbelianSeries(b.ker,a);
+    # can we just make a series from the pcgs?
+    nt:=CanonicalPcgs(Pcgs(b.ker));
+    nt:=List([1..Length(nt)+1],x->SubgroupNC(b.ker,nt{[x..Length(pc)]}));
+    nt:=Filtered(nt,x->IsNormal(b.ker,x));
+    nt:=Filtered(nt,x->ForAll(a,y->Image(y,x)=x));
+    if ForAll([1..Length(nt)-1],
+        x->HasElementaryAbelianFactorGroup(nt[x],nt[x+1])) then
+      ser:=nt;
+    else
+      ser:=InvariantElementaryAbelianSeries(b.ker,a);
+    fi;
     a:=List(ser,InducedPcgsWrtFamilyPcgs);
     a:=List([2..Length(a)],x->a[x-1] mod a[x]);
     if Concatenation(a)<>oc then
