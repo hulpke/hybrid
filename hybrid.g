@@ -1515,7 +1515,12 @@ if not HasReducedConfluentRewritingSystem(Range(r.monhom)) then Error("huh");fi;
   TranslateMonoidRules(fam);
   fam!.fphom:=r.fphom;
   fam!.auts:=auts;
-  fam!.autsinv:=List(auts,Inverse);
+  for i in auts do SetIsBijective(i,true);od;
+  if HasIsAbelian(ker) and IsAbelian(ker) then
+    fam!.autsinv:=List(auts,x->Inverse(x:abeliandomain));
+  else
+    fam!.autsinv:=List(auts,Inverse);
+  fi;
   fam!.factorone:=One(r.presentation.group);
   fam!.normalone:=One(ker);
   fam!.normal:=ker;
@@ -1655,6 +1660,60 @@ local gens,g,ep,img;
 end;
 
 # this maybe should go into the library
+HGCheapDeeperWords:=function(pcgs,g1,w1)
+local ves,i,j,a,b,p,d,dl,occ,gens,wrds;
+  gens:=[];
+  wrds:=[];
+  for i in [1..Length(g1)] do
+    p:=Position(gens,g1[i]);
+    if p=fail then
+      Add(gens,g1[i]);
+      Add(wrds,w1[i]);
+    elif Length(w1[i])<Length(wrds[p]) then
+      wrds[p]:=w1[i];
+    fi;
+  od;
+  vecs:=List(gens,x->ExponentsOfPcElement(pcgs,x));
+  occ:=List(InducedPcgsByGenerators(pcgs,g1),x->DepthOfPcElement(pcgs,x));
+  dl:=List(pcgs,x->0);
+  for i in [1..Length(gens)] do
+    d:=DepthOfPcElement(pcgs,gens[i]);
+    if dl[d]=0 or Length(wrds[i])<dl[d] then
+      dl[d]:=Length(wrds[i]);
+    fi;
+  od;
+
+  i:=1;
+  while i<=Length(vecs) do
+    j:=1;
+    p:=PositionNonZero(vecs[i]);
+    while j<=Length(vecs) do
+      if PositionNonZero(vecs[j])=p then
+        # at least some cancellation
+        a:=gens[i]/gens[j];
+        if not (a in gens or IsOne(a)) then
+          b:=wrds[i]/wrds[j];
+          d:=DepthOfPcElement(pcgs,a);
+          if dl[d]=0 or Length(b)<=7/4*dl[d] then
+            Add(gens,a);
+            Add(vecs,ExponentsOfPcElement(pcgs,a));
+            Add(wrds,b);
+            if dl[d]=0 or Length(b)<dl[d] then
+              dl[d]:=Length(b);
+            fi;
+          fi;
+        fi;
+      fi;
+      j:=j+1;
+    od;
+    if ForAll(occ,x->dl[x]<>0) then i:=Length(vecs);fi;
+    i:=i+1;
+  od;
+   return [gens,wrds];
+end;
+
+
+
 InstallMethod( InducedPcgsByGeneratorsWithImages, "words images",true,
     [ IsPcgs and IsPrimeOrdersPcgs, IsCollection,
       IsCollection and IsAssocWordCollection ], 0,
@@ -1672,6 +1731,9 @@ function( pcgs, gens, imgs )
 
     # get the trivial case first
     if gens = AsList( pcgs ) then return [pcgs, imgs]; fi;
+
+    u:=HGCheapDeeperWords(pcgs,gens,imgs);
+    gens:=u[1];imgs:=u[2];
 
     #catch special case: abelian
     nonab:=not IsAbelian(Group(pcgs,OneOfPcgs(pcgs)));
@@ -1696,13 +1758,23 @@ function( pcgs, gens, imgs )
         then return Length(x[2])>Length(y[2]);
       else
         return DepthOfPcElement( pcgs, x[1] )
-                                   < DepthOfPcElement( pcgs, y[1] );
+                                   > DepthOfPcElement( pcgs, y[1] );
       fi;
     end;
     Sort( new, f );
 
     # <seen> holds a list of words already seen
     seen := Union( Set( gens ), [id[1]] );
+
+    # seed with existing
+    for u in new do
+      uw := DepthOfPcElement( pcgs, u[1] );
+      if igs[uw][1]=id[1] or Length(igs[uw][2])>Length(u[2]) then
+        igs[uw]:=u;
+      fi;
+    od;
+
+    new:=Reversed(new);
 
     # start putting <new> into <igs>
     while 0 < Length(new)  do
@@ -1799,7 +1871,7 @@ end);
 
 # form short words in an attempt to find short relators
 ShortKerWords:=function(fam,gens,free,lim)
-local w,e,es,i,j,a,b,ee,p,ker,kerw;
+local w,e,es,i,j,a,b,ee,p,ker,kerw,einv;
   e:=ShallowCopy(gens);
   # inverses?
   gens:=ShallowCopy(gens);
@@ -1811,6 +1883,7 @@ local w,e,es,i,j,a,b,ee,p,ker,kerw;
     fi;
   od;
   e:=ShallowCopy(gens);
+  einv:=[];
   es:=Set(e);
   ee:=List(e,x->MappedWord(x![1],
     GeneratorsOfGroup(fam!.presentation.group),
@@ -1836,7 +1909,10 @@ local w,e,es,i,j,a,b,ee,p,ker,kerw;
         else
           p:=Position(ee,b);
           if p<>fail then
-            Add(ker,a/e[p]);
+            if not IsBound(einv[p]) then
+              einv[p]:=Inverse(e[p]);
+            fi;
+            Add(ker,a*einv[p]);
             Add(kerw,w[Length(w)]/w[p]);
           else
             p:=Position(ee,b^-1);
@@ -1870,7 +1946,8 @@ end;
 
 HybridBits:=function(G)
 local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
-  xker,xkerw,addker,dowords,ffam,of,sz,isorec,prelms,genimgs,base,strong;
+  xker,xkerw,addker,dowords,ffam,of,sz,isorec,prelms,genimgs,base,strong,
+  epif;
 
   if HasSize(G) then
     sz:=Size(G);
@@ -1996,14 +2073,38 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
       x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
   else
     map:=GroupGeneralMappingByImagesNC(factor,gf,top,gfg{sel});
-    map:=List(GeneratorsOfGroup(fp),
-      x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
+    if Size(factor)<=10^6 then
+      # force short words
+      prelms:=List(GeneratorsOfGroup(fp),x->PreImagesRepresentative(iso,x));
+      epif:=Group(MappingGeneratorsImages(map)[1]);
+      prelms:=List(prelms,x->Factorization(epif,x));
+      # translate into proper letters
+      epif:=EpimorphismFromFreeGroup(epif);
+      map:=List(prelms,x->MappedWord(x,GeneratorsOfGroup(Source(epif)),
+        MappingGeneratorsImages(map)[2]));
+    else
+      map:=List(GeneratorsOfGroup(fp),
+        x->ImagesRepresentative(map,PreImagesRepresentative(iso,x)));
+    fi;
   fi;
 
   # generators in kernel
   for i in Difference([1..Length(GeneratorsOfGroup(G))],sel) do
     addker(gfg[i]);
   od;
+
+  # short words
+  if Size(sub)<sz and Length(sel)>0 and dowords then
+    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},
+      Minimum(500,Size(Source(iso))));
+    i:=1;
+    if Length(j[2])>100 then Error("hua");fi;
+    while i<=Length(j[2]) and Size(sub)<sz and Length(sel)>0 do
+      addker(j[2][i]);
+      i:=i+1;
+    od;
+    if Length(j[2])>100 then Error("uha");fi;
+  fi;
 
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
     and Size(sub)<sz and Size(factor)>1 then
@@ -2040,15 +2141,6 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
         addker(kerw[i]^j);
       od;
       i:=i+1;
-    od;
-  fi;
-
-  # short words
-  if Size(sub)<sz and Length(sel)>0 and dowords then
-    j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},
-      Minimum(100,RootInt(Size(Source(iso))),2));
-    for i in j[2] do
-      addker(i);
     od;
   fi;
 
@@ -2115,6 +2207,7 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     j.frepsfilter:=List(sub,x->HybridGroupElement(fam,x![1],
       SiftedPcElement(j.kerpcgs,x![2])));
     j.wordskerpcgs:=i[2];
+
   else
     j.freps:=map;
   fi;
@@ -2390,8 +2483,8 @@ local fg,fh,hg,hh,head,d,e1,e2,gen1,gen2,gens,aut,auts,tails,i,nfam,type,
  new,fhp,translate;
   fg:=FamilyObj(One(G));
   fh:=FamilyObj(One(H));
-  hg:=HybridBits(G);
-  hh:=HybridBits(H);
+  hg:=HybridBits(G:dowords:=false);
+  hh:=HybridBits(H:dowords:=false);
   head:=List(GeneratorsOfGroup(G),x->x![1]);
   if fg!.presentation<>fh!.presentation then
     if Length(GeneratorsOfGroup(fg!.presentation.group))<>
@@ -3510,7 +3603,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
   od;
 
   b:=List(newq,x->x[3]);
-  Print("Now intersect covers, extend by ",ext," as ",b," to ",Sum(b),"\n");
+  Print("Now subdirect covers, extend by ",ext," as ",b," to ",Sum(b),"\n");
 
   if Length(newq)=0 then return q;fi;
 
