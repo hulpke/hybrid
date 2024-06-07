@@ -2076,7 +2076,11 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     if Size(factor)<=10^6 then
       # force short words
       prelms:=List(GeneratorsOfGroup(fp),x->PreImagesRepresentative(iso,x));
-      epif:=Group(MappingGeneratorsImages(map)[1]);
+      if Length(MappingGeneratorsImages(map)[1])=0 then
+        epif:=Range(map);
+      else
+        epif:=Group(MappingGeneratorsImages(map)[1]);
+      fi;
       prelms:=List(prelms,x->Factorization(epif,x));
       # translate into proper letters
       epif:=EpimorphismFromFreeGroup(epif);
@@ -4354,6 +4358,10 @@ local fam,fg,fs,nat,nag,nas,a,qg,qs,qt,qtr,kt,pci,t,cache,orb,lg,
   #qtr:=List(qt,x->PreImagesRepresentative(nag,x));
   qtr:=[];
   pci:=fg.parentffs.pcisom;
+  # might not have ker
+  if not IsBound(fg.ker) and IsBound(fg.radical) then
+    fg.ker:=fg.radical;
+  fi;
   keri:=Image(pci,fg.ker);
   kt:=RightTransversal(keri,Image(pci,fs.ker));
 
