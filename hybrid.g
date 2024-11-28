@@ -1065,6 +1065,83 @@ local r,z,ogens,n,gens,str,dim,i,j,f,rels,new,quot,g,p,collect,m,e,fp,old,
 
 end;
 
+# take two homomorphisms: q on group and sq on ker q to solvable group
+HybridGroupSquotKernel:=function(q,sq)
+local g,pcgp,pcgs,pcgspre,len,m,co,ogens,n,ggens,auts,aut,i,j,fam,
+      tails,gens,a,type;
+
+  g:=Image(q);
+  pcgp:=Image(sq,Kernel(q));
+  pcgs:=Pcgs(pcgp);
+  pcgspre:=List(pcgs,x->PreImagesRepresentative(sq,x));
+  len:=Length(pcgs);
+
+  # sledgehammer -- get "presentation" info from 2cohom
+  m:=GModuleByMats(List(GeneratorsOfGroup(g),x->IdentityMat(2,GF(2))),GF(2));
+  co:=TwoCohomologyGeneric(g,m);
+  ogens:=MappingGeneratorsImages(co.fphom)[1];
+  n:=Length(ogens);
+  ggens:=List(ogens,x->PreImagesRepresentative(q,x));
+
+
+  # automorphisms for generators
+  auts:=[];
+  for i in [1..n] do
+    aut:=[];
+    for j in [1..len] do
+      Add(aut,ImagesRepresentative(sq,pcgspre[j]^ggens[i]));
+    od;
+    aut:=GroupHomomorphismByImagesNC(pcgp,pcgp,pcgs,aut);
+    SetIsBijective(aut,true);
+    SpeedupDataPcHom(aut);
+    Add(auts,aut);
+  od;
+
+  fam:=NewFamily("Hybrid elements family",IsHybridGroupElement);
+  fam!.presentation:=co.presentation;
+  fam!.factgrp:=co.group;
+  fam!.monhom:=co.monhom;
+  TranslateMonoidRules(fam);
+  fam!.fphom:=co.fphom;
+  fam!.auts:=auts;
+  fam!.autsinv:=List(auts,Inverse);
+  for i in fam!.autsinv do SpeedupDataPcHom(i);od;
+  fam!.factorone:=One(co.presentation.group);
+  fam!.normalone:=One(pcgp);
+  fam!.normal:=pcgp;
+  fam!.wholeSize:=Size(fam!.factgrp)*Size(fam!.normal);
+  HybridAutMats(fam);
+  type:=NewType(fam,IsHybridGroupElementDefaultRep);
+  fam!.defaultType:=type;
+  SetOne(fam,HybridGroupElement(fam,fam!.factorone,fam!.normalone));
+  gens:=[];
+  for i in GeneratorsOfGroup(co.presentation.group) do
+    Add(gens,HybridGroupElement(fam,i,fam!.normalone));
+  od;
+  for i in pcgs do
+    Add(gens,HybridGroupElement(fam,fam!.factorone,i));
+  od;
+
+  # Evaluate tails
+  tails:=[];
+  for i in [1..Length(co.presentation.relators)] do
+    a:=MappedWord(co.presentation.relators,
+      GeneratorsOfGroup(co.presentation.group),ogens);
+    Add(tails,ImagesRepresentative(sq,a));
+  od;
+
+  fam!.tails:=tails;
+
+  gens:=Group(gens);
+  #SetSize(gens,Size(r.group)*r.prime^r.module.dimension);
+
+  fam!.wholeGroup:=gens;
+  return gens;
+
+end;
+
+
+
 # rebuild with larger pc kernel, thus moving more of collection into the
 # (presumably more efficient) kernel routines for pc groups.
 # This should help with calculation speed.
@@ -4456,6 +4533,8 @@ local a,c;
   if t!.khom<>fail then
     a:=1^ImagesRepresentative(t!.khom,elm);
   else
+
+    #TODO: Use kt as transversal for S in N*S
 
     a:=PreImagesRepresentative(t!.nas,a); # subgroup coset rep
 
