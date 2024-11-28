@@ -1661,7 +1661,7 @@ end;
 
 # this maybe should go into the library
 HGCheapDeeperWords:=function(pcgs,g1,w1)
-local ves,i,j,a,b,p,d,dl,occ,gens,wrds;
+local ves,i,j,a,b,p,d,dl,occ,gens,wrds,vecs;
   gens:=[];
   wrds:=[];
   for i in [1..Length(g1)] do
@@ -1713,10 +1713,13 @@ local ves,i,j,a,b,p,d,dl,occ,gens,wrds;
 end;
 
 
+Print("Temporarily Disabling NEw IPGWI method\n");
 
 InstallMethod( InducedPcgsByGeneratorsWithImages, "words images",true,
     [ IsPcgs and IsPrimeOrdersPcgs, IsCollection,
-      IsCollection and IsAssocWordCollection ], 0,
+      IsCollection and IsAssocWordCollection ],
+-100+   # rank lower, so not used
+      0,
 function( pcgs, gens, imgs )
     local  ro, max, id, igs, chain, new, seen, old, u, uw, up, e, x, c,
            cw, d, i, j, f,nonab;
@@ -1733,6 +1736,7 @@ function( pcgs, gens, imgs )
     if gens = AsList( pcgs ) then return [pcgs, imgs]; fi;
 
     u:=HGCheapDeeperWords(pcgs,gens,imgs);
+
     gens:=u[1];imgs:=u[2];
 
     #catch special case: abelian
@@ -1755,10 +1759,10 @@ function( pcgs, gens, imgs )
     new := List( [1..Length(gens)], i -> [gens[i], imgs[i]]);
     f   := function( x, y )
       if DepthOfPcElement( pcgs, x[1] )=DepthOfPcElement( pcgs, y[1] )
-        then return Length(x[2])>Length(y[2]);
+        then return Length(x[2])<Length(y[2]);
       else
         return DepthOfPcElement( pcgs, x[1] )
-                                   > DepthOfPcElement( pcgs, y[1] );
+                                   < DepthOfPcElement( pcgs, y[1] );
       fi;
     end;
     Sort( new, f );
@@ -1766,15 +1770,13 @@ function( pcgs, gens, imgs )
     # <seen> holds a list of words already seen
     seen := Union( Set( gens ), [id[1]] );
 
-    # seed with existing
-    for u in new do
-      uw := DepthOfPcElement( pcgs, u[1] );
-      if igs[uw][1]=id[1] or Length(igs[uw][2])>Length(u[2]) then
-        igs[uw]:=u;
-      fi;
-    od;
-
-    new:=Reversed(new);
+#    # seed with existing
+#   for u in new do
+#     uw := DepthOfPcElement( pcgs, u[1] );
+#     if igs[uw][1]=id[1] or Length(igs[uw][2])>Length(u[2]) then
+#       igs[uw]:=u;
+#     fi;
+#   od;
 
     # start putting <new> into <igs>
     while 0 < Length(new)  do
@@ -2182,17 +2184,25 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     ker:=Permuted(ker,j);
     kerw:=Permuted(kerw,j);
 
+
     # canonize
     i:=InducedPcgsByGeneratorsWithImages(FamilyPcgs(sub),
       List(ker,x->x![2]),kerw);
     #Print(List(kerw,Length)," vs ",List(i[2],Length),"\n");
+
+    if Length(Pcgs(sub))<>Length(i[1]) then
+      Error("wrong IGS computed!");
+    fi;
+
   else
     i:=[CanonicalPcgsWrtFamilyPcgs(sub)];
   fi;
 
+  sub:=Group(i[1],fam!.normalone);
+
+
   if HasSize(G) and Size(G)<>Size(sub)*Size(factor) then Error("EEE!");fi;
 
-  sub:=Group(i[1],fam!.normalone);
   j:=rec(factor:=factor,
           ker:=sub,
           kerpcgs:=i[1],
@@ -3619,6 +3629,7 @@ local G,a,b,irr,newq,i,j,cov,ker,ext,nat,moco,doit,sma,img,kerpc,g,oldcoh,
     cov:=SubdirectHybrid(cov,b:dowords:=false);
   od;
 
+
   fam:=FamilyObj(One(cov));
   if IsBound(fam!.quickermult) and fam!.quickermult<>fail then
     b:=HybridBits(cov:dowords:=false);
@@ -3643,8 +3654,10 @@ if not IsBound(FamilyObj(One(b))!.fphom) then Error("C");fi;
     fi;
   fi;
 
+if Size(cov)<>Size(Group(GeneratorsOfGroup(cov))) then Error("vvV");fi;
+
   if IsHybridGroup(a) then cov!.originalFactor:=a; fi;
-  b:=HybridBits(cov);
+  b:=HybridBits(cov:dowords:=false);
 
   Print("Recalculate module action\n");
 
