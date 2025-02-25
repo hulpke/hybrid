@@ -2042,7 +2042,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   fam:=FamilyObj(One(G));
   # TODO: Re-use these free groups
   gf:=FreeGroup(Length(GeneratorsOfGroup(G)),"w"); # for word expressions
-  gfg:=GeneratorsOfGroup(gf);
+  # make SLP to form tree expressions
+  gfg:=StraightLineProgGens(GeneratorsOfGroup(gf));
   #gfg:=StraightLineProgGens(gfg);
 
   # first get the factor
@@ -2181,12 +2182,12 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
     j:=ShortKerWords(fam,GeneratorsOfGroup(G){sel},gfg{sel},
       Minimum(500,Size(Source(iso))));
     i:=1;
-    if Length(j[2])>100 then Error("hua");fi;
+    if Length(j[2])>100 then Print("hua\n");fi;
     while i<=Length(j[2]) and Size(sub)<sz and Length(sel)>0 do
       addker(j[2][i]);
       i:=i+1;
     od;
-    if Length(j[2])>100 then Error("uha");fi;
+    if Length(j)>3 and Length(j[4])>100 then Print("uha\n");fi;
   fi;
 
   if dowords and (IsPermGroup(factor) or IsPcGroup(factor))
@@ -2826,7 +2827,7 @@ InstallMethod(Size,"hybrid groups",
   [IsGroup and IsHybridGroupElementCollection],0,
 function(G)
 local b;
-  b:=HybridBits(G);
+  b:=HybridBits(G:dowords:=false);
   return Size(b.factor)*Size(b.ker);
 end);
 
