@@ -2043,7 +2043,8 @@ local fam,top,toppers,sel,map,ker,sub,i,j,img,factor,iso,fp,gf,gfg,kerw,
   # TODO: Re-use these free groups
   gf:=FreeGroup(Length(GeneratorsOfGroup(G)),"w"); # for word expressions
   # make SLP to form tree expressions
-  gfg:=StraightLineProgGens(GeneratorsOfGroup(gf));
+  gfg:=GeneratorsOfGroup(gf);
+  #gfg:=StraightLineProgGens(GeneratorsOfGroup(gf));
   #gfg:=StraightLineProgGens(gfg);
 
   # first get the factor
