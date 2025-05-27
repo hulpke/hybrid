@@ -20,6 +20,11 @@
 # in characteristic p.
 # A list of irreducible modules to consider can be fed through the
 # option `irr'.
+#
+# HybridGroupSquotKernel(alpha,beta)
+# Let \alpha\colong G\to Q, (factor group) and
+# \beta\colon\ker\alpha\to B solvable group with characteristic kernel
+# Constructs G/\ker\beta as hybrid group
 
 if not IsBound(IsHybridGroupElement) then
   DeclareCategory( "IsHybridGroupElement",
@@ -1073,7 +1078,7 @@ local g,pcgp,pcgs,pcgspre,len,m,co,ogens,n,ggens,auts,aut,i,j,fam,
   g:=Image(q);
   pcgp:=Image(sq,Kernel(q));
   pcgs:=Pcgs(pcgp);
-  pcgspre:=List(pcgs,x->PreImagesRepresentative(sq,x));
+  #pcgspre:=List(pcgs,x->PreImagesRepresentative(sq,x));
   len:=Length(pcgs);
 
   # sledgehammer -- get "presentation" info from 2cohom
@@ -1087,11 +1092,21 @@ local g,pcgp,pcgs,pcgspre,len,m,co,ogens,n,ggens,auts,aut,i,j,fam,
   # automorphisms for generators
   auts:=[];
   for i in [1..n] do
-    aut:=[];
-    for j in [1..len] do
-      Add(aut,ImagesRepresentative(sq,pcgspre[j]^ggens[i]));
-    od;
-    aut:=GroupHomomorphismByImagesNC(pcgp,pcgp,pcgs,aut);
+    # build induced action
+    map:=List(MappingGeneratorsImages(sq)[1],
+      x->ImagesRepresentative(sq,x^ggens[i]));
+    map:=GroupHomomorphismByImages(pcgp,pcgp,
+      MappingGeneratorsImages(sq)[2],map);
+
+
+    #aut:=[];
+    #for j in [1..len] do
+    #  Add(aut,ImagesRepresentative(sq,pcgspre[j]^ggens[i]));
+    #od;
+    #aut:=GroupHomomorphismByImagesNC(pcgp,pcgp,pcgs,aut);
+    aut:=GroupHomomorphismByImagesNC(pcgp,pcgp,pcgs,
+      List(pcgs,x->ImagesRepresentative(map,x)));
+
     SetIsBijective(aut,true);
     SpeedupDataPcHom(aut);
     Add(auts,aut);
@@ -1125,8 +1140,8 @@ local g,pcgp,pcgs,pcgspre,len,m,co,ogens,n,ggens,auts,aut,i,j,fam,
   # Evaluate tails
   tails:=[];
   for i in [1..Length(co.presentation.relators)] do
-    a:=MappedWord(co.presentation.relators,
-      GeneratorsOfGroup(co.presentation.group),ogens);
+    a:=MappedWord(co.presentation.relators[i],
+      GeneratorsOfGroup(co.presentation.group),ggens);
     Add(tails,ImagesRepresentative(sq,a));
   od;
 
