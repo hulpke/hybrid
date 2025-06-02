@@ -1073,7 +1073,7 @@ end;
 # take two homomorphisms: q on group and sq on ker q to solvable group
 HybridGroupSquotKernel:=function(q,sq)
 local g,pcgp,pcgs,pcgspre,len,m,co,ogens,n,ggens,auts,aut,i,j,fam,
-      tails,gens,a,type;
+      tails,gens,a,type,map;
 
   g:=Image(q);
   pcgp:=Image(sq,Kernel(q));
